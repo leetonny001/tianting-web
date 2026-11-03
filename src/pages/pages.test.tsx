@@ -152,6 +152,12 @@ describe('会话列表（F-UI-04、F-UI-20、F-UI-23）', () => {
 });
 
 describe('聊天页（F-UI-06～F-UI-10）', () => {
+  it('给自己发消息：c2c:alice:alice 打开聊天页（AC-UI-05-3）', async () => {
+    await renderLoggedIn(`/chat/${encodeURIComponent('c2c:alice:alice')}`);
+    expect(decodeURIComponent(window.location.pathname)).toBe('/chat/c2c:alice:alice');
+    expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+  });
+
   it('不合法的会话 ID 回到会话列表并提示"会话不存在"（V-UI-14）', async () => {
     await renderLoggedIn('/chat/c2c%3Abob%3Acarol');
     expect(window.location.pathname).toBe('/chats');

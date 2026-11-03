@@ -1,4 +1,4 @@
-import { ConvIdError, parseConvIdStrict, type Message } from '@tianting/sdk';
+import { ConvIdError, IMError, parseConvIdStrict, type Message } from '@tianting/sdk';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar } from '../components/Avatar';
@@ -8,7 +8,7 @@ import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { useClient, useSelf } from '../im/ImProvider';
-import { useConversations, useConversationsLoaded, useMessages } from '../im/hooks';
+import { useConnState, useConversations, useMessages, useSnapshot } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 import { chatPath } from '../lib/routes';
 import { formatTime, needsDivider } from '../lib/time';
@@ -40,10 +40,11 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const navigate = useNavigate();
   const toast = useToast();
   const convs = useConversations();
-  const loaded = useConversationsLoaded();
   const conv = convs.find((x) => x.convId === convId);
+  const snapshot = useSnapshot(convId);
   const messages = useMessages(convId);
-  const [removed, setRemoved] = useState(false);
+  // 群不在会话列表、也没有快照时先向服务端确认（G-UI-26）：确认前只显示加载状态，不显示输入框和"不在该群"。
+  const [probe, setProbe] = useState<'idle' | 'loading' | 4033 | 4043>('idle');
   const [history, setHistory] = useState<'idle' | 'loading' | 'end' | 'error'>('idle');
   const [newCount, setNewCount] = useState(0);
   const [retry, setRetry] = useState<Message | null>(null);
@@ -52,6 +53,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const atBottom = useRef(true);
   const prevLen = useRef(0);
   const anchor = useRef<number | null>(null); // 加载历史前的 scrollHeight，用来保持可视位置不跳动
+  const connected = useConnState() === 'connected';
 
   // 只有聊天页实际可见时才是当前会话（F-UI-06 规则 8）；离开时设为 null。
   useEffect(() => {
@@ -59,18 +61,47 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     return () => c.setActiveConversation(null);
   }, [c, convId]);
 
-  useEffect(() => c.on('convRemoved', (id) => id === convId && setRemoved(true)) as () => void, [c, convId]);
-  useEffect(
-    () =>
-      c.on('sendFailed', (id, _cid, err) => {
-        if (id === convId && err === 4033) setRemoved(true);
-      }) as () => void,
-    [c, convId],
-  );
+  // 进入群聊天页时刷新成员数（G-UI-24，SDK 内 30 秒节流）。
+  useEffect(() => {
+    if (type === 'group' && connected) c.refreshConversations().catch(() => {});
+  }, [c, type, connected]);
 
-  // 群不在会话列表里：本次登录期间被移出，或者不是成员 / 群不存在（F-UI-33）。
-  // 打开时向服务端确认（sync 返回 4033 / 4043 再区分文案）由 SDK 的 G-UI-26（FE-206）补上。
-  const notMember = type === 'group' && (removed || (loaded && !conv));
+  // 打开本地没有的会话：向服务端要最新一页（F-UI-33 规则 1、G-UI-26）。
+  const unknown = !conv && !snapshot && messages.length === 0;
+  useEffect(() => {
+    if (!unknown || !connected) return;
+    let live = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 发起请求前进入"确认中"，和请求是同一个外部同步过程
+    setProbe('loading');
+    c.loadHistory(convId)
+      .then(() => live && setProbe('idle'))
+      .catch((e: unknown) => {
+        if (!live) return;
+        const code = e instanceof IMError ? e.code : 0;
+        if (code === 4033 || code === 4043) setProbe(code);
+        else if (code === 4032) {
+          toast('会话不存在');
+          navigate('/chats', { replace: true });
+        } else setProbe('idle');
+      });
+    return () => {
+      live = false;
+    };
+    // 只在打开会话或连上之后确认一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convId, connected]);
+
+  // 不能发送的原因（F-UI-33 规则 2～4）：快照按 reason 映射（不认识的值按"被移出"），服务端确认 4033 / 4043。
+  const blocked: { tip: string; bar: string } | null = snapshot
+    ? snapshot.reason === 'dissolved'
+      ? { tip: '群聊已解散', bar: '群聊已解散，无法发送消息' }
+      : { tip: '你已不在该群', bar: '你已不在该群，无法发送消息' }
+    : probe === 4033
+      ? { tip: '你已不在该群', bar: '你已不在该群，无法发送消息' }
+      : probe === 4043
+        ? { tip: '群聊不存在或已解散', bar: '群聊不存在或已解散' }
+        : null;
+  const probing = type === 'group' && unknown && probe !== 4033 && probe !== 4043;
 
   // 打开会话时加载最新一页（F-MSG-05 规则 3）。
   useEffect(() => {
@@ -111,13 +142,22 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     prevLen.current = messages.length;
   }, [messages, self]);
 
-  const title = conv?.name ?? to; // 临时单聊（还没有会话）显示对方账号
+  // 标题（F-UI-06 规则 2）：群聊"群名（N）"，群名省略、（N）始终完整；成员数缺失、快照状态只显示群名；
+  // 服务端确认不在群里时显示"群聊"。临时单聊（还没有会话）显示对方账号。
+  const name =
+    conv?.name ?? snapshot?.name ?? (type === 'group' && probe !== 'idle' && probe !== 'loading' ? '群聊' : to);
+  const count = type === 'group' && conv?.memberCount !== undefined ? `（${conv.memberCount}）` : '';
   const rows = useMemo(() => withDividers(messages), [messages]);
 
   return (
     <div className="tt-page tt-chat">
       <TopBar
-        title={<span className="tt-ellipsis">{title}</span>}
+        title={
+          <span className="tt-title-row" data-testid="chat-title">
+            <span className="tt-ellipsis">{name}</span>
+            {count && <span className="tt-title-count">{count}</span>}
+          </span>
+        }
         back="/chats"
         right={
           <button
@@ -169,7 +209,16 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
             />
           ),
         )}
-        {notMember && <div className="tt-divider">你已不在该群</div>}
+        {probing && (
+          <div className="tt-history" data-testid="chat-probing">
+            加载中…
+          </div>
+        )}
+        {blocked && (
+          <div className="tt-divider" data-testid="chat-blocked-tip">
+            {blocked.tip}
+          </div>
+        )}
       </div>
       {newCount > 0 && (
         <button
@@ -184,9 +233,9 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           ↓ {newCount} 条新消息
         </button>
       )}
-      {notMember ? (
+      {probing ? null : blocked ? (
         <div className="tt-composer-disabled" data-testid="composer-disabled">
-          你已不在该群，无法发送消息
+          {blocked.bar}
         </div>
       ) : (
         <Composer

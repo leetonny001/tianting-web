@@ -19,7 +19,13 @@ export default tseslint.config(
         },
         { selector: "MemberExpression[property.name='innerHTML']", message: '禁止 innerHTML' },
       ],
+      // localStorage 只允许存 ui.* 偏好（PRD-ui NF-UI-12、FE-246），统一走 src/lib/uiPrefs.ts。
+      'no-restricted-globals': ['error', { name: 'localStorage', message: '用 src/lib/uiPrefs.ts（只允许 ui.* 键）' }],
     },
+  },
+  {
+    files: ['src/lib/uiPrefs.ts'],
+    rules: { 'no-restricted-globals': 'off' },
   },
   {
     files: ['scripts/**/*.mjs'],

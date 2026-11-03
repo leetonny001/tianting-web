@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { avatarColorIndex, avatarInitial, fnv1a32 } from './avatar';
+import { avatarColorIndex, avatarInitial } from '@tianting/sdk';
 import { KNOWN_CODES, messageFor } from './errors';
 import { safeRedirect } from './routes';
 import { formatTime, needsDivider } from './time';
@@ -62,17 +62,16 @@ describe('时间显示（F-MSG-06 规则 4）', () => {
   });
 });
 
-describe('占位头像（F-UI-21、AC-UI-21-1）', () => {
-  it('首字：拉丁字母转大写；按码点取第一个字符', () => {
+describe('占位头像：界面用 SDK 的实现，跑共享用例 avatar.json（AC-UI-21-1、AC-UI-21-2）', () => {
+  const spec = JSON.parse(readFileSync('node_modules/@tianting/sdk/protocol/vectors/avatar.json', 'utf8')) as {
+    colors: { id: string; index: number }[];
+    initials: { name: string; initial: string }[];
+  };
+  it('颜色下标和首字与用例一致', () => {
+    for (const c of spec.colors) expect(avatarColorIndex(c.id), c.id).toBe(c.index);
+    for (const c of spec.initials) expect(avatarInitial(c.name), c.name).toBe(c.initial);
     expect(avatarInitial('bob')).toBe('B');
     expect(avatarInitial('张三')).toBe('张');
     expect(avatarInitial('😀abc')).toBe('😀');
-  });
-  it('FNV-1a-32 与标准值一致，颜色下标在 0～7', () => {
-    expect(fnv1a32('')).toBe(0x811c9dc5);
-    expect(fnv1a32('a')).toBe(0xe40c292c);
-    expect(fnv1a32('foobar')).toBe(0xbf9cf968);
-    expect(avatarColorIndex('alice')).toBeGreaterThanOrEqual(0);
-    expect(avatarColorIndex('alice')).toBeLessThan(8);
   });
 });

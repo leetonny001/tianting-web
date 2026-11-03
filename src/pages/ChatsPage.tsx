@@ -7,7 +7,7 @@ import { Icon } from '../components/Icon';
 import { badgeText, TabBar } from '../components/TabBar';
 import { TopBar } from '../components/TopBar';
 import { useSelf } from '../im/ImProvider';
-import { useConversations, useConversationsLoaded } from '../im/hooks';
+import { useConversations, useConversationsLoaded, useConversationsTruncated } from '../im/hooks';
 import { chatPath } from '../lib/routes';
 import { formatTime } from '../lib/time';
 import { StartChatDialog } from './StartChatDialog';
@@ -19,10 +19,20 @@ let savedScrollTop = 0;
 export function ChatsPage() {
   const convs = useConversations();
   const loaded = useConversationsLoaded();
+  const truncated = useConversationsTruncated();
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  // 性能检查（AC-UI-90-6）：会话列表第一次渲染完成。
+  const marked = useRef(false);
+  useLayoutEffect(() => {
+    if (!marked.current && loaded) {
+      marked.current = true;
+      performance.mark('tt-convs-rendered');
+    }
+  });
 
   useLayoutEffect(() => {
     const el = listRef.current;
@@ -85,7 +95,16 @@ export function ChatsPage() {
             </button>
           </div>
         ) : (
-          convs.map((c) => <ConvItem key={c.convId} conv={c} />)
+          <>
+            {convs.map((c) => (
+              <ConvItem key={c.convId} conv={c} />
+            ))}
+            {truncated && (
+              <p className="tt-list-foot" data-testid="convs-truncated">
+                仅显示最近 500 个会话
+              </p>
+            )}
+          </>
         )}
       </div>
       <TabBar onReselectChats={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} />

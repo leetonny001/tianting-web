@@ -19,6 +19,7 @@ export interface Conv {
   unread?: number;
   lastMsg?: { msgId: string; from: string; type: string; text: string; ts: number } | null;
   updatedAt?: number;
+  memberCount?: number;
 }
 
 export function serverConv(p: Conv) {
@@ -39,7 +40,10 @@ export function serverConv(p: Conv) {
  * 以 userId 登录（sessionStorage 里放好 token，模拟刷新后自动重连），打开 path，
  * 用 FakeTransport 完成 auth 和 convs。返回连接，测试可以继续推送帧、回 ack。
  */
-export async function renderLoggedIn(path: string, opts: { userId?: string; convs?: Conv[] } = {}) {
+export async function renderLoggedIn(
+  path: string,
+  opts: { userId?: string; convs?: Conv[]; truncated?: boolean } = {},
+) {
   const userId = opts.userId ?? 'alice';
   const transport = new FakeTransport();
   let n = 0;
@@ -60,7 +64,9 @@ export async function renderLoggedIn(path: string, opts: { userId?: string; conv
     c.ack('auth', { userId, serverTime: Date.now() });
   });
   await settle();
-  await act(async () => c.ack('convs', { convs: (opts.convs ?? []).map(serverConv), truncated: false }));
+  await act(async () =>
+    c.ack('convs', { convs: (opts.convs ?? []).map(serverConv), truncated: opts.truncated ?? false }),
+  );
   await settle();
   return { ...view, c, transport };
 }

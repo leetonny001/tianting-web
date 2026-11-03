@@ -41,8 +41,16 @@ export default defineConfig({
         IM_DB: db,
         IM_TEST_MODE: '1',
         IM_DEMO_LOGIN: '1',
-        IM_ALLOWED_ORIGINS: WEB,
+        IM_ALLOWED_ORIGINS: `${WEB},http://127.0.0.1:15174`,
       },
+    },
+    {
+      // 生产构建（带 CSP meta）：csp.spec.ts 用它检查没有 CSP 违规。
+      command: 'npx vite build --logLevel warn && npx vite preview --host 127.0.0.1 --port 15174 --strictPort',
+      url: 'http://127.0.0.1:15174',
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: { TIANTING_SERVER: SERVER },
     },
     {
       command: 'npx vite --host 127.0.0.1 --port 15173 --strictPort',

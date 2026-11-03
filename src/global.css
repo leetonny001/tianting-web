@@ -657,3 +657,19 @@ a {
     scroll-behavior: auto !important;
   }
 }
+
+.tt-title-row {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.tt-title-count {
+  flex-shrink: 0;
+}
+.tt-list-foot {
+  margin: 0;
+  padding: var(--tt-space-3);
+  text-align: center;
+  font-size: var(--tt-font-caption);
+  color: var(--tt-color-text-tertiary);
+}

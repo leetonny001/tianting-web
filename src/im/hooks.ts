@@ -1,4 +1,4 @@
-import type { ConnState, Conversation, IMClient, Message } from '@tianting/sdk';
+import type { ConnState, Conversation, ConversationSnapshot, IMClient, Message } from '@tianting/sdk';
 import { useSyncExternalStore } from 'react';
 import { useClient } from './ImProvider';
 
@@ -11,6 +11,9 @@ type Listener = () => void;
 class ClientStore {
   convs: Conversation[];
   convsLoaded = false;
+  truncated = false;
+  /** 被移出群的快照（G-UI-21），convRemoved / conversations 事件时刷新。 */
+  snapshots = new Map<string, ConversationSnapshot | undefined>();
   state: ConnState;
   banner = false;
   totalUnread: number;
@@ -31,10 +34,15 @@ class ClientStore {
       'conversations',
       set(() => {
         this.convs = c.conversations();
+        this.truncated = c.truncated();
+        this.snapshots.clear();
         // disconnect() 会清空 SDK 的数据（退出登录、演示面板的"模拟断网"），缓存的消息列表一起丢弃，重连后重新拉取。
         if (c.state === 'disconnected' && this.convs.length === 0) this.msgs.clear();
         // 连上之后 SDK 先拉 convs 再发事件；连接前（重置时）发的空列表不算"已加载"（PRD-ui F-UI-20 骨架屏）。
-        if (c.state === 'connected') this.convsLoaded = true;
+        if (c.state === 'connected' && !this.convsLoaded) {
+          this.convsLoaded = true;
+          performance.mark('tt-convs-loaded'); // 性能检查（AC-UI-90-6）：convs 到达
+        }
       }),
     );
     c.on('messages', (id, list) =>
@@ -42,6 +50,7 @@ class ClientStore {
         this.msgs.set(id, list);
       })(),
     );
+    c.on('convRemoved', () => set(() => this.snapshots.clear())());
     c.on('state', (s) => set(() => (this.state = s))());
     c.on('banner', (b) => set(() => (this.banner = b))());
     c.on('totalUnread', (n) => set(() => (this.totalUnread = n))());
@@ -55,6 +64,11 @@ class ClientStore {
       this.msgs.set(convId, list);
     }
     return list;
+  }
+
+  snapshot(convId: string): ConversationSnapshot | undefined {
+    if (!this.snapshots.has(convId)) this.snapshots.set(convId, this.c.conversationSnapshot(convId));
+    return this.snapshots.get(convId);
   }
 
   subscribe = (l: Listener) => {
@@ -84,6 +98,10 @@ function useStore<T>(read: (s: ClientStore) => T): T {
 export const useConversations = () => useStore((s) => s.convs);
 /** 会话列表是否已经从服务端拿到过（首次加载期间显示骨架屏）。 */
 export const useConversationsLoaded = () => useStore((s) => s.convsLoaded);
+/** 会话列表是否被截断（只返回最近 500 个，C-03）。 */
+export const useConversationsTruncated = () => useStore((s) => s.truncated);
+/** 被移出群后保留的快照；没有被移出时为 undefined。 */
+export const useSnapshot = (convId: string) => useStore((s) => s.snapshot(convId));
 export const useMessages = (convId: string) => useStore((s) => s.messages(convId));
 export const useConnState = () => useStore((s) => s.state);
 export const useBanner = () => useStore((s) => s.banner);
