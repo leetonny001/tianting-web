@@ -1,0 +1,78 @@
+# 天听 H5 的 CI：格式、代码检查、类型检查、token / 对比度 / 颜色字面量 / 品牌词、单元测试、构建与首屏体积、端到端测试。
+# 依赖两个私有仓库：@tianting/sdk（tianting-sdk-ts）和端到端测试用的 tianting-server，需要两把只读部署密钥
+# （secret TIANTING_SDK_DEPLOY_KEY、TIANTING_SERVER_DEPLOY_KEY，见 README「CI」）。没配置时跳过。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYS: ${{ secrets.TIANTING_SDK_DEPLOY_KEY != '' && secrets.TIANTING_SERVER_DEPLOY_KEY != '' }}
+    steps:
+      - name: 未配置部署密钥，跳过
+        if: env.HAS_KEYS != 'true'
+        run: echo "::notice::未配置 TIANTING_SDK_DEPLOY_KEY / TIANTING_SERVER_DEPLOY_KEY，跳过 CI"
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYS == 'true'
+        with:
+          path: tianting-web
+      - name: 检出 tianting-sdk-ts（只读部署密钥）
+        if: env.HAS_KEYS == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: leetonny001/tianting-sdk-ts
+          ssh-key: ${{ secrets.TIANTING_SDK_DEPLOY_KEY }}
+          path: tianting-sdk-ts
+          persist-credentials: false
+      - name: 检出 tianting-server（只读部署密钥）
+        if: env.HAS_KEYS == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: leetonny001/tianting-server
+          ssh-key: ${{ secrets.TIANTING_SERVER_DEPLOY_KEY }}
+          path: tianting-server
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEYS == 'true'
+        with:
+          node-version: 26
+      - uses: actions/setup-go@v5
+        if: env.HAS_KEYS == 'true'
+        with:
+          go-version-file: tianting-server/server/go.mod
+          cache-dependency-path: tianting-server/server/go.sum
+      - name: 构建 SDK
+        if: env.HAS_KEYS == 'true'
+        working-directory: tianting-sdk-ts
+        run: npm ci && npm run build
+      - name: 安装、检查、单元测试、构建
+        if: env.HAS_KEYS == 'true'
+        working-directory: tianting-web
+        run: |
+          npm ci
+          npm audit --audit-level=moderate
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm run check
+          npm test
+          npm run build
+          node scripts/check-bundle.mjs
+          node scripts/check-brand.mjs dist
+      - name: 端到端测试（真实 im-server）
+        if: env.HAS_KEYS == 'true'
+        working-directory: tianting-web
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+        env:
+          CI: '1'
+          TIANTING_SERVER_DIR: ${{ github.workspace }}/tianting-server/server

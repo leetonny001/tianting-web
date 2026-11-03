@@ -1,0 +1,154 @@
+import type { Conversation } from '@tianting/sdk';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { Avatar } from '../components/Avatar';
+import { ConnBanner } from '../components/ConnBanner';
+import { Icon } from '../components/Icon';
+import { badgeText, TabBar } from '../components/TabBar';
+import { TopBar } from '../components/TopBar';
+import { useSelf } from '../im/ImProvider';
+import { useConversations, useConversationsLoaded } from '../im/hooks';
+import { chatPath } from '../lib/routes';
+import { formatTime } from '../lib/time';
+import { StartChatDialog } from './StartChatDialog';
+
+// 返回会话列表时恢复滚动位置（AC-UI-01-5）。只在本页生命周期之外保存一个数字，不存任何会话内容。
+let savedScrollTop = 0;
+
+/** 会话列表（PRD-ui F-UI-04）。 */
+export function ChatsPage() {
+  const convs = useConversations();
+  const loaded = useConversationsLoaded();
+  const [menu, setMenu] = useState(false);
+  const [dialog, setDialog] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = savedScrollTop;
+    return () => {
+      if (el) savedScrollTop = el.scrollTop;
+    };
+  }, [loaded]);
+
+  return (
+    <div className="tt-page">
+      <TopBar
+        title="消息"
+        right={
+          <button
+            className="tt-icon-btn"
+            aria-label="更多操作"
+            onClick={() => setMenu((v) => !v)}
+            data-testid="plus-button"
+          >
+            <Icon name="plus" />
+          </button>
+        }
+      />
+      {menu && (
+        <div className="tt-menu-layer" onClick={() => setMenu(false)}>
+          <div
+            className="tt-menu tt-plus-menu"
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="plus-menu"
+          >
+            <button role="menuitem" onClick={() => navigate('/contacts')}>
+              <Icon name="addFriend" size={20} />
+              添加朋友
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenu(false);
+                setDialog(true);
+              }}
+            >
+              <Icon name="chats" size={20} />
+              发起单聊
+            </button>
+          </div>
+        </div>
+      )}
+      <ConnBanner />
+      <div className="tt-scroll" ref={listRef} data-testid="conv-list">
+        {!loaded && convs.length === 0 ? (
+          <Skeleton />
+        ) : convs.length === 0 ? (
+          <div className="tt-empty" data-testid="chats-empty">
+            <div className="tt-empty-art" aria-hidden="true" />
+            <p>还没有聊天</p>
+            <button className="tt-btn tt-btn-primary" onClick={() => setDialog(true)}>
+              发起单聊
+            </button>
+          </div>
+        ) : (
+          convs.map((c) => <ConvItem key={c.convId} conv={c} />)
+        )}
+      </div>
+      <TabBar onReselectChats={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} />
+      {dialog && <StartChatDialog onClose={() => setDialog(false)} />}
+    </div>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div data-testid="chats-skeleton" aria-busy="true">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div className="tt-conv tt-skeleton" key={i}>
+          <span className="tt-skeleton-avatar" />
+          <span className="tt-skeleton-lines">
+            <span />
+            <span />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 摘要（PRD-ui F-UI-04 规则 5）：群里别人发的加"发送者: "前缀；custom 显示"[暂不支持的消息]"。 */
+function summary(c: Conversation, self: string): string {
+  const m = c.lastMsg;
+  if (!m) return '';
+  const text = m.type === 'text' ? m.text : '[暂不支持的消息]';
+  return c.type === 'group' && m.from !== self ? `${m.from}: ${text}` : text;
+}
+
+const ConvItem = memo(function ConvItem({ conv }: { conv: Conversation }) {
+  const self = useSelf();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const group = conv.type === 'group';
+  const id = conv.convId.slice(conv.convId.indexOf(':') + 1);
+  return (
+    <Link className="tt-conv" to={chatPath(conv.convId)} data-testid="conv-item" data-conv-id={conv.convId}>
+      <span className="tt-conv-avatar">
+        <Avatar id={group ? id : peerOf(conv.convId, self)} name={conv.name} size={48} group={group} />
+        {conv.unread > 0 && (
+          <span className="tt-badge" data-testid="conv-badge">
+            {badgeText(conv.unread)}
+          </span>
+        )}
+      </span>
+      <span className="tt-conv-main">
+        <span className="tt-conv-row">
+          <span className="tt-conv-name">{conv.name}</span>
+          {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
+        </span>
+        <span className="tt-conv-summary">{summary(conv, self)}</span>
+      </span>
+    </Link>
+  );
+});
+
+function peerOf(convId: string, self: string): string {
+  const [, a = '', b = ''] = convId.split(':');
+  return a === self ? b : a;
+}
