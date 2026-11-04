@@ -135,14 +135,14 @@ describe('会话列表（F-UI-04、F-UI-20、F-UI-23）', () => {
     expect(screen.getAllByTestId('conv-item')[0]).toHaveAttribute('data-conv-id', 'c2c:alice:carol');
   });
 
-  it('"+"菜单依次为"添加朋友""发起单聊"；发起单聊进入临时会话（AC-UI-05-5、AC-UI-05-2）', async () => {
+  it('"+"菜单依次为"发起群聊""添加朋友""发起单聊"；发起单聊进入临时会话（AC-UI-05-5、AC-UI-05-2）', async () => {
     await renderLoggedIn('/chats');
     fireEvent.click(screen.getByTestId('plus-button'));
     expect(
       within(screen.getByTestId('plus-menu'))
         .getAllByRole('menuitem')
         .map((b) => b.textContent),
-    ).toEqual(['添加朋友', '发起单聊']);
+    ).toEqual(['发起群聊', '添加朋友', '发起单聊']);
     fireEvent.click(within(screen.getByTestId('plus-menu')).getByText('发起单聊'));
     expect(screen.getByTestId('start-chat-submit')).toBeDisabled();
     await userEvent.type(screen.getByTestId('start-chat-input'), 'bob{Enter}');

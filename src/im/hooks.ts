@@ -1,16 +1,19 @@
-import type {
-  BlockedUser,
-  ConnState,
-  Conversation,
-  ConversationSnapshot,
-  Friend,
-  FriendRequest,
-  IMClient,
-  Message,
-  SocialSettings,
-  UserProfile,
+import {
+  IMError,
+  type BlockedUser,
+  type ConnState,
+  type Conversation,
+  type ConversationSnapshot,
+  type Friend,
+  type FriendRequest,
+  type GroupInfo,
+  type GroupMemberInfo,
+  type IMClient,
+  type Message,
+  type SocialSettings,
+  type UserProfile,
 } from '@tianting/sdk';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { useClient } from './ImProvider';
 
 type Listener = () => void;
@@ -197,6 +200,126 @@ export function useProfile(userId: string): UserProfile | undefined {
     };
   }, [c, userId, connected]);
   return loaded?.userId === userId ? loaded : c.profileOf(userId);
+}
+
+/** 确保这些人的资料进了缓存（渲染提示消息用，一次多个人）；资料到达后重新渲染，取名字用 c.displayName。 */
+export function useProfiles(ids: readonly string[]): void {
+  const c = useClient();
+  const connected = useStore((s) => s.state === 'connected');
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useFriends();
+  const key = ids.join(',');
+  useEffect(() => {
+    if (!connected || !key) return;
+    let live = true;
+    c.getUsers(key.split(','))
+      .then(() => {
+        if (live) bump();
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [c, key, connected]);
+}
+
+/**
+ * 群资料（PRD-ui F-UI-36 规则 1）：进入和重连时查一次；之后由 groupChanged 带来（SDK 已查好，不重复请求）。
+ * gone 是 4033 / 4043：已不在群里或群不存在。
+ */
+export function useGroupInfo(groupId: string) {
+  const c = useClient();
+  const connected = useStore((s) => s.state === 'connected');
+  const [info, setInfo] = useState<GroupInfo | null>(null);
+  const [gone, setGone] = useState<number | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setInfo(await c.getGroupInfo(groupId));
+    } catch (e) {
+      const code = e instanceof IMError ? e.code : 0;
+      if (code === 4033 || code === 4043) setGone(code);
+    }
+  }, [c, groupId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步请求的结果，不是同步 setState
+    if (connected) void refresh();
+  }, [connected, refresh]);
+  useEffect(() => c.on('groupChanged', (g, next) => g === groupId && setInfo(next)), [c, groupId]);
+  useEffect(() => c.on('convRemoved', (id) => id === `group:${groupId}` && setGone(4033)), [c, groupId]);
+  return { info, gone, refresh };
+}
+
+function mergeMembers(list: GroupMemberInfo[], page: GroupMemberInfo[]): GroupMemberInfo[] {
+  const seen = new Set(list.map((m) => m.userId));
+  return [...list, ...page.filter((m) => !seen.has(m.userId))];
+}
+
+/**
+ * 群成员分页（F-UI-38）：loadMore 加载下一页并按 userId 去重；reload 从头拉到之前的数量（列表不会缩回第一页），
+ * 有更新的 reload 时丢弃旧结果。收到 groupChanged 时自动 reload。
+ */
+export function useGroupMembers(groupId: string) {
+  const c = useClient();
+  const connected = useStore((s) => s.state === 'connected');
+  const [members, setMembers] = useState<GroupMemberInfo[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const cursor = useRef('');
+  const count = useRef(0);
+  const generation = useRef(0);
+  const busy = useRef(false);
+
+  const current = useRef<GroupMemberInfo[]>([]);
+
+  const publish = useCallback((list: GroupMemberInfo[], next: string) => {
+    cursor.current = next;
+    count.current = list.length;
+    current.current = list;
+    setMembers(list);
+    setHasMore(next !== '');
+    setLoaded(true);
+  }, []);
+
+  const reload = useCallback(async () => {
+    const mine = ++generation.current;
+    busy.current = true;
+    try {
+      let list: GroupMemberInfo[] = [];
+      let next = '';
+      do {
+        const page = await c.loadGroupMembers(groupId, next || undefined);
+        if (mine !== generation.current) return;
+        list = mergeMembers(list, page.members);
+        next = page.nextCursor;
+      } while (next && list.length < count.current);
+      publish(list, next);
+    } catch {
+      // 保留现有列表；连接恢复或下一次 groupChanged 时重查
+    } finally {
+      if (mine === generation.current) busy.current = false;
+    }
+  }, [c, groupId, publish]);
+
+  const loadMore = useCallback(async () => {
+    if (busy.current || !cursor.current) return;
+    const mine = generation.current;
+    busy.current = true;
+    try {
+      const page = await c.loadGroupMembers(groupId, cursor.current);
+      if (mine !== generation.current) return;
+      publish(mergeMembers(current.current, page.members), page.nextCursor);
+    } catch {
+      // 下次滚动时重试
+    } finally {
+      if (mine === generation.current) busy.current = false;
+    }
+  }, [c, groupId, publish]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步请求的结果，不是同步 setState
+    if (connected) void reload();
+  }, [connected, reload]);
+  useEffect(() => c.on('groupChanged', (g) => void (g === groupId && reload())), [c, groupId, reload]);
+  return { members, loaded, hasMore, loadMore, reload };
 }
 
 /** 显示名：好友备注 → 昵称 → userId。 */

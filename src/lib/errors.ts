@@ -48,13 +48,15 @@ const BY_CODE: Record<number, string> = {
 const BY_CMD: Record<string, Record<number, string>> = {
   friendApply: { 4000: '请先将对方移出黑名单' },
   friendRemark: { 4040: '对方已不在你的通讯录中' },
+  groupCreate: { 4130: '群成员已达上限' },
+  groupInvite: { 4130: '群成员已达上限' },
 };
 
 /** 开发期缺陷类的码：只写日志，界面统一提示"请求出错"。 */
 export const LOG_ONLY = new Set([4000, 4002, 4003, 4007, 4008]);
 
 /** 按"命令 + 错误码"取文案；不认识的 4xxx 提示"请求出错"，5xxx 提示"服务异常，请稍后重试"（C-09）。 */
-export function messageFor(code: number, cmd?: string, ctx?: { strangerMsgLimit?: number }): string {
+export function messageFor(code: number, cmd?: string, ctx?: { strangerMsgLimit?: number; name?: string }): string {
   const special = cmd ? (BY_CMD[cmd]?.[code] ?? commandMessage(cmd, code, ctx)) : undefined;
   if (special) return special;
   if (BY_CODE[code]) return BY_CODE[code];

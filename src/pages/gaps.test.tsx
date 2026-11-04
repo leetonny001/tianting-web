@@ -41,11 +41,6 @@ describe('聊天页标题与成员数（AC-UI-06-1、AC-UI-06-2、AC-UI-12-1）'
     await renderLoggedIn(at(G), { convs: [{ convId: G, name: '周末球局' }] });
     expect(screen.getByTestId('chat-title').textContent).toBe('周末球局');
   });
-  it('聊天信息页显示"群成员（N）"，没有任何操作入口', async () => {
-    await renderLoggedIn(`${at(G)}/info`, { convs: [{ convId: G, name: '周末球局', memberCount: 5 }] });
-    expect(screen.getByTestId('info-sub')).toHaveTextContent('群成员（5）');
-    expect(screen.queryByRole('button', { name: /解散|退出|添加|修改/ })).not.toBeInTheDocument();
-  });
 });
 
 describe('被移出 / 解散 / 未知会话（F-UI-33）', () => {
@@ -55,7 +50,7 @@ describe('被移出 / 解散 / 未知会话（F-UI-33）', () => {
     await settle();
     expect(screen.getByTestId('chat-title').textContent).toBe('周末球局');
     expect(screen.getByTestId('chat-blocked-tip')).toHaveTextContent('群聊已解散');
-    expect(screen.getByTestId('composer-disabled')).toHaveTextContent('群聊已解散，无法发送消息');
+    expect(screen.getByTestId('composer-disabled')).toHaveTextContent('群聊已解散');
   });
 
   it('不认识的 reason 按"你已不在该群"；重新被拉进群后输入框恢复（AC-UI-33-11、33-12）', async () => {

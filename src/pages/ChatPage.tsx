@@ -1,4 +1,4 @@
-import { ConvIdError, IMError, parseConvIdStrict, type Message } from '@tianting/sdk';
+import { ConvIdError, IMError, parseConvIdStrict, tipText, type Message } from '@tianting/sdk';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
@@ -15,12 +15,14 @@ import {
   useFriends,
   useMessages,
   useProfile,
+  useProfiles,
   useSendTips,
   useSnapshot,
   useSocialSettings,
 } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 import { messageFor } from '../lib/errors';
+import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
@@ -73,11 +75,6 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     return () => c.setActiveConversation(null);
   }, [c, convId]);
 
-  // 进入群聊天页时刷新成员数（G-UI-24，SDK 内 30 秒节流）。
-  useEffect(() => {
-    if (type === 'group' && connected) c.refreshConversations().catch(() => {});
-  }, [c, type, connected]);
-
   // 打开本地没有的会话：向服务端要最新一页（F-UI-33 规则 1、G-UI-26）。
   const unknown = !conv && !snapshot && messages.length === 0;
   useEffect(() => {
@@ -106,8 +103,10 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   // 不能发送的原因（F-UI-33 规则 2～4）：快照按 reason 映射（不认识的值按"被移出"），服务端确认 4033 / 4043。
   const blocked: { tip: string; bar: string } | null = snapshot
     ? snapshot.reason === 'dissolved'
-      ? { tip: '群聊已解散', bar: '群聊已解散，无法发送消息' }
-      : { tip: '你已不在该群', bar: '你已不在该群，无法发送消息' }
+      ? { tip: '群聊已解散', bar: '群聊已解散' }
+      : snapshot.reason === 'left'
+        ? { tip: '你已退出该群聊', bar: '你已退出该群聊' }
+        : { tip: '你已不在该群', bar: '你已不在该群，无法发送消息' }
     : probe === 4033
       ? { tip: '你已不在该群', bar: '你已不在该群，无法发送消息' }
       : probe === 4043
@@ -221,6 +220,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
             <div className="tt-divider" key={r.key}>
               {formatTime(r.ts)}
             </div>
+          ) : r.m.type === 'tip' ? (
+            <TipRow key={r.m.clientMsgId} m={r.m} convId={convId} />
           ) : (
             <Fragment key={r.m.clientMsgId}>
               <Bubble
@@ -382,6 +383,27 @@ const MOVE_CANCEL_PX = 10;
 const MENU_HEIGHT = 96;
 
 /** 消息气泡（F-UI-07、F-UI-08）。长按 500ms（移动超过 10px 取消）或右键打开菜单（F-UI-09）。 */
+/** 群提示消息（PRD-ui F-UI-40）：居中小字，没有头像、气泡和菜单；文案用本地显示名渲染。 */
+function TipRow({ m, convId }: { m: Message; convId: string }) {
+  const c = useClient();
+  const self = useSelf();
+  const tip = m.body.tip;
+  useProfiles(tip ? [tip.actor, ...tip.targets].filter(Boolean) : []);
+  const text = tip ? tipText(tip, self, (u) => c.displayName(u)) : '[群通知]';
+  if (tip?.kind === 'noticeUpdated') {
+    return (
+      <Link className="tt-tip tt-tip-link" to={noticePath(convId)} data-testid="tip" data-kind={tip.kind}>
+        {text}
+      </Link>
+    );
+  }
+  return (
+    <div className="tt-tip" data-testid="tip" data-kind={tip?.kind}>
+      {text}
+    </div>
+  );
+}
+
 function Bubble({
   m,
   self,

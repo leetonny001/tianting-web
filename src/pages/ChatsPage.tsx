@@ -76,6 +76,10 @@ export function ChatsPage() {
             onClick={(e) => e.stopPropagation()}
             data-testid="plus-menu"
           >
+            <button role="menuitem" onClick={() => navigate('/groups/new')} data-testid="plus-new-group">
+              <Icon name="contacts" size={20} />
+              发起群聊
+            </button>
             <button role="menuitem" onClick={() => navigate('/contacts/add')}>
               <Icon name="addFriend" size={20} />
               添加朋友
@@ -147,7 +151,8 @@ function Skeleton() {
 const summaryText = (c: Conversation) => {
   const m = c.lastMsg;
   if (!m) return '';
-  return m.type === 'text' ? m.text : '[暂不支持的消息]';
+  // 提示消息用服务端摘要（F-UI-40 规则 3），不加发送者前缀。
+  return m.type === 'text' || m.type === 'tip' ? m.text : '[暂不支持的消息]';
 };
 
 /** 群摘要的发送者前缀（PRD-ui F-UI-04 规则 5）：显示名未就绪时先显示 userId，就绪后替换。 */
@@ -187,7 +192,7 @@ const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; 
           {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
         </span>
         <span className="tt-conv-summary">
-          {group && from && from !== self && <SenderPrefix userId={from} />}
+          {group && from && from !== self && conv.lastMsg?.type !== 'tip' && <SenderPrefix userId={from} />}
           {summaryText(conv)}
         </span>
       </span>

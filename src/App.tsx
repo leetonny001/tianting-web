@@ -1,6 +1,6 @@
 import type { FatalReason } from '@tianting/sdk';
 import { useEffect, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
 import { DemoPanel } from './components/DemoPanel';
 import { Dialog } from './components/Dialog';
 import { ToastProvider, useToast } from './components/Toast';
@@ -8,6 +8,7 @@ import { ImProvider, useIm, type ClientFactory } from './im/ImProvider';
 import { usePendingCount, useTotalUnread } from './im/hooks';
 import { APP_NAME } from './lib/config';
 import { messageFor } from './lib/errors';
+import { isGroupConv } from './lib/group';
 import { safeRedirect } from './lib/routes';
 import { ChatInfoPage } from './pages/ChatInfoPage';
 import { ChatPage } from './pages/ChatPage';
@@ -16,6 +17,10 @@ import { AddFriendPage } from './pages/AddFriendPage';
 import { ApplyPage } from './pages/ApplyPage';
 import { BlocksPage } from './pages/BlocksPage';
 import { ContactsPage } from './pages/ContactsPage';
+import { GroupInvitePage } from './pages/GroupInvitePage';
+import { GroupMembersPage } from './pages/GroupMembersPage';
+import { GroupNewPage } from './pages/GroupNewPage';
+import { GroupNoticePage } from './pages/GroupNoticePage';
 import { GroupsPage } from './pages/GroupsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MePage } from './pages/MePage';
@@ -37,6 +42,12 @@ export function App({ factory }: { factory?: ClientFactory }) {
       </ImProvider>
     </BrowserRouter>
   );
+}
+
+/** 群子页面只对群会话有效；其他 convId 回到会话列表。 */
+function GroupOnly({ page }: { page: ReactNode }) {
+  const convId = useParams().convId ?? '';
+  return isGroupConv(convId) ? page : <Navigate to="/chats" replace />;
 }
 
 export function AppRoutes() {
@@ -85,6 +96,10 @@ export function AppRoutes() {
         />
         {(
           [
+            ['/groups/new', <GroupNewPage />],
+            ['/chat/:convId/notice', <GroupOnly page={<GroupNoticePage />} />],
+            ['/chat/:convId/members', <GroupOnly page={<GroupMembersPage />} />],
+            ['/chat/:convId/invite', <GroupOnly page={<GroupInvitePage />} />],
             ['/contacts/requests', <RequestsPage />],
             ['/contacts/groups', <GroupsPage />],
             ['/contacts/add', <AddFriendPage />],
