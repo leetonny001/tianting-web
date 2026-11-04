@@ -61,7 +61,19 @@ test('可访问性：主要页面没有 color-contrast、button-name 违规（AC
   await page.getByTestId('composer-input').press('Enter');
   await expect(page.getByTestId('message')).toHaveAttribute('data-status', 'sent');
   await scan(page, 'chat');
-  for (const path of ['/chats', '/contacts', '/me', '/me/settings']) {
+  for (const path of [
+    '/chats',
+    '/contacts',
+    '/contacts/requests',
+    '/contacts/groups',
+    '/contacts/add',
+    `/contacts/apply/${b}`,
+    `/user/${b}`,
+    '/me',
+    '/me/settings',
+    '/me/settings/blocks',
+    '/me/settings/privacy',
+  ]) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
     await scan(page, path);

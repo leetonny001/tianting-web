@@ -1,16 +1,28 @@
 import { ConvIdError, IMError, parseConvIdStrict, type Message } from '@tianting/sdk';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
-import { Avatar } from '../components/Avatar';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Avatar, OfficialTag } from '../components/Avatar';
 import { ConnBanner } from '../components/ConnBanner';
 import { Confirm } from '../components/Dialog';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { useClient, useSelf } from '../im/ImProvider';
-import { useConnState, useConversations, useMessages, useSnapshot } from '../im/hooks';
+import {
+  useConnState,
+  useConversations,
+  useDisplayName,
+  useFriends,
+  useMessages,
+  useProfile,
+  useSendTips,
+  useSnapshot,
+  useSocialSettings,
+} from '../im/hooks';
 import { copyText } from '../lib/clipboard';
+import { messageFor } from '../lib/errors';
 import { chatPath } from '../lib/routes';
+import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
 import { Composer } from './Composer';
 
@@ -144,10 +156,20 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
 
   // 标题（F-UI-06 规则 2）：群聊"群名（N）"，群名省略、（N）始终完整；成员数缺失、快照状态只显示群名；
   // 服务端确认不在群里时显示"群聊"。临时单聊（还没有会话）显示对方账号。
+  useFriends(); // 备注变化时刷新标题
+  const peerProfile = useProfile(type === 'c2c' ? to : self);
+  const remarkOrNickname = c.displayName(to);
   const name =
-    conv?.name ?? snapshot?.name ?? (type === 'group' && probe !== 'idle' && probe !== 'loading' ? '群聊' : to);
+    type === 'c2c' && remarkOrNickname !== to
+      ? remarkOrNickname // 单聊：备注 > 昵称（会话名是服务端给的昵称，备注只在本机）
+      : (conv?.name ?? snapshot?.name ?? (type === 'group' && probe !== 'idle' && probe !== 'loading' ? '群聊' : to));
   const count = type === 'group' && conv?.memberCount !== undefined ? `（${conv.memberCount}）` : '';
+  const tips = useSendTips(convId);
+  const strangerMsgLimit = useSocialSettings().strangerMsgLimit;
   const rows = useMemo(() => withDividers(messages), [messages]);
+  const tipFor = useMemo(() => permissionTips(messages, tips), [messages, tips]);
+  // 资料卡的申请来源（F-UI-14 规则 7）：从群进入为 group，从单聊进入为 conv。
+  const userState: UserRouteState = type === 'group' ? { source: 'group', sourceRef: to } : { source: 'conv' };
 
   return (
     <div className="tt-page tt-chat">
@@ -155,6 +177,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         title={
           <span className="tt-title-row" data-testid="chat-title">
             <span className="tt-ellipsis">{name}</span>
+            {type === 'c2c' && peerProfile?.official && <OfficialTag />}
             {count && <span className="tt-title-count">{count}</span>}
           </span>
         }
@@ -199,14 +222,34 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
               {formatTime(r.ts)}
             </div>
           ) : (
-            <Bubble
-              key={r.m.clientMsgId}
-              m={r.m}
-              self={r.m.from === self}
-              showName={type === 'group' && r.m.from !== self}
-              onRetry={() => setRetry(r.m)}
-              onMenu={(top, below) => setMenu({ m: r.m, top, below })}
-            />
+            <Fragment key={r.m.clientMsgId}>
+              <Bubble
+                m={r.m}
+                self={r.m.from === self}
+                showName={type === 'group' && r.m.from !== self}
+                userState={userState}
+                onRetry={() => setRetry(r.m)}
+                onMenu={(top, below) => setMenu({ m: r.m, top, below })}
+              />
+              {tipFor.get(r.m.clientMsgId) !== undefined && (
+                <div className="tt-permission-tip" data-testid="permission-tip">
+                  {messageFor(tipFor.get(r.m.clientMsgId)!, 'send', { strangerMsgLimit })}
+                  {tipFor.get(r.m.clientMsgId) === 4035 && (
+                    <>
+                      {' '}
+                      <Link
+                        className="tt-link"
+                        to={applyPath(to)}
+                        state={{ source: 'conv' } satisfies UserRouteState}
+                        data-testid="permission-apply"
+                      >
+                        发送好友申请
+                      </Link>
+                    </>
+                  )}
+                </div>
+              )}
+            </Fragment>
           ),
         )}
         {probing && (
@@ -314,6 +357,26 @@ function withDividers(ms: Message[]): Row[] {
   return out;
 }
 
+/**
+ * 私聊权限提示条（F-UI-31）：跟在失败消息下面；相邻的提示内容相同时只保留最后一条。
+ * 重发成功后消息不再是失败状态，提示条随之消失。
+ */
+function permissionTips(ms: Message[], tips: ReadonlyMap<string, number> | undefined): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!tips) return out;
+  let lastId = '';
+  let lastCode = 0;
+  for (const m of ms) {
+    const code = m.status === 'failed' ? tips.get(m.clientMsgId) : undefined;
+    if (code === undefined) continue;
+    if (lastCode === code) out.delete(lastId);
+    out.set(m.clientMsgId, code);
+    lastId = m.clientMsgId;
+    lastCode = code;
+  }
+  return out;
+}
+
 const LONG_PRESS_MS = 500;
 const MOVE_CANCEL_PX = 10;
 const MENU_HEIGHT = 96;
@@ -323,16 +386,21 @@ function Bubble({
   m,
   self,
   showName,
+  userState,
   onRetry,
   onMenu,
 }: {
   m: Message;
   self: boolean;
   showName: boolean;
+  userState: UserRouteState;
   onRetry: () => void;
   onMenu: (top: number, below: boolean) => void;
 }) {
   const press = useRef<{ x: number; y: number; t: ReturnType<typeof setTimeout> } | null>(null);
+  const navigate = useNavigate();
+  const senderName = useDisplayName(m.from);
+  const sender = useProfile(m.from);
   const supported = m.type === 'text';
   const hasMenu = supported || m.status === 'failed';
   const open = (el: HTMLElement) => {
@@ -352,9 +420,16 @@ function Bubble({
       data-status={m.status}
       data-client-msg-id={m.clientMsgId}
     >
-      <Avatar id={m.from} name={m.from} size={40} />
+      <button
+        className="tt-msg-avatar-btn"
+        aria-label={`查看 ${senderName} 的资料`}
+        onClick={() => navigate(userPath(m.from), { state: userState })}
+        data-testid="msg-avatar"
+      >
+        <Avatar id={m.from} name={senderName} size={40} src={sender?.avatar} />
+      </button>
       <div className="tt-msg-body">
-        {showName && <div className="tt-msg-name">{m.from}</div>}
+        {showName && <div className="tt-msg-name">{senderName}</div>}
         <div className="tt-msg-line">
           {self && m.status !== 'sent' && (
             <span className="tt-msg-status">

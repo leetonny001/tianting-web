@@ -1,13 +1,20 @@
 import type { Conversation } from '@tianting/sdk';
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Avatar } from '../components/Avatar';
+import { Avatar, OfficialTag } from '../components/Avatar';
 import { ConnBanner } from '../components/ConnBanner';
 import { Icon } from '../components/Icon';
 import { badgeText, TabBar } from '../components/TabBar';
 import { TopBar } from '../components/TopBar';
 import { useSelf } from '../im/ImProvider';
-import { useConversations, useConversationsLoaded, useConversationsTruncated } from '../im/hooks';
+import {
+  useConversations,
+  useConversationsLoaded,
+  useConversationsTruncated,
+  useDisplayName,
+  useFriends,
+  useProfile,
+} from '../im/hooks';
 import { chatPath } from '../lib/routes';
 import { formatTime } from '../lib/time';
 import { StartChatDialog } from './StartChatDialog';
@@ -20,6 +27,10 @@ export function ChatsPage() {
   const convs = useConversations();
   const loaded = useConversationsLoaded();
   const truncated = useConversationsTruncated();
+  const friends = useFriends();
+  const self = useSelf();
+  // 单聊显示名：备注 > 服务端给的会话名（备注只在本机，PRD-social 5.5 节）。算好传给 memo 的会话项，避免每项都订阅。
+  const remarks = useMemo(() => new Map(friends.filter((f) => f.remark).map((f) => [f.userId, f.remark])), [friends]);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -65,7 +76,7 @@ export function ChatsPage() {
             onClick={(e) => e.stopPropagation()}
             data-testid="plus-menu"
           >
-            <button role="menuitem" onClick={() => navigate('/contacts')}>
+            <button role="menuitem" onClick={() => navigate('/contacts/add')}>
               <Icon name="addFriend" size={20} />
               添加朋友
             </button>
@@ -97,7 +108,11 @@ export function ChatsPage() {
         ) : (
           <>
             {convs.map((c) => (
-              <ConvItem key={c.convId} conv={c} />
+              <ConvItem
+                key={c.convId}
+                conv={c}
+                remark={c.type === 'c2c' ? remarks.get(peerOf(c.convId, self)) : undefined}
+              />
             ))}
             {truncated && (
               <p className="tt-list-foot" data-testid="convs-truncated">
@@ -129,15 +144,22 @@ function Skeleton() {
   );
 }
 
-/** 摘要（PRD-ui F-UI-04 规则 5）：群里别人发的加"发送者: "前缀；custom 显示"[暂不支持的消息]"。 */
-function summary(c: Conversation, self: string): string {
+const summaryText = (c: Conversation) => {
   const m = c.lastMsg;
   if (!m) return '';
-  const text = m.type === 'text' ? m.text : '[暂不支持的消息]';
-  return c.type === 'group' && m.from !== self ? `${m.from}: ${text}` : text;
+  return m.type === 'text' ? m.text : '[暂不支持的消息]';
+};
+
+/** 群摘要的发送者前缀（PRD-ui F-UI-04 规则 5）：显示名未就绪时先显示 userId，就绪后替换。 */
+function SenderPrefix({ userId }: { userId: string }) {
+  return <>{useDisplayName(userId)}: </>;
 }
 
-const ConvItem = memo(function ConvItem({ conv }: { conv: Conversation }) {
+function PeerOfficial({ id }: { id: string }) {
+  return useProfile(id)?.official ? <OfficialTag /> : null;
+}
+
+const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; remark?: string }) {
   const self = useSelf();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -146,10 +168,12 @@ const ConvItem = memo(function ConvItem({ conv }: { conv: Conversation }) {
   }, []);
   const group = conv.type === 'group';
   const id = conv.convId.slice(conv.convId.indexOf(':') + 1);
+  const name = remark || conv.name;
+  const from = conv.lastMsg?.from;
   return (
     <Link className="tt-conv" to={chatPath(conv.convId)} data-testid="conv-item" data-conv-id={conv.convId}>
       <span className="tt-conv-avatar">
-        <Avatar id={group ? id : peerOf(conv.convId, self)} name={conv.name} size={48} group={group} />
+        <Avatar id={group ? id : peerOf(conv.convId, self)} name={name} size={48} group={group} />
         {conv.unread > 0 && (
           <span className="tt-badge" data-testid="conv-badge">
             {badgeText(conv.unread)}
@@ -158,10 +182,14 @@ const ConvItem = memo(function ConvItem({ conv }: { conv: Conversation }) {
       </span>
       <span className="tt-conv-main">
         <span className="tt-conv-row">
-          <span className="tt-conv-name">{conv.name}</span>
+          <span className="tt-conv-name">{name}</span>
+          {!group && <PeerOfficial id={peerOf(conv.convId, self)} />}
           {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
         </span>
-        <span className="tt-conv-summary">{summary(conv, self)}</span>
+        <span className="tt-conv-summary">
+          {group && from && from !== self && <SenderPrefix userId={from} />}
+          {summaryText(conv)}
+        </span>
       </span>
     </Link>
   );

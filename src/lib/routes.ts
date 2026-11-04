@@ -5,8 +5,16 @@ export const ROUTE_PATTERNS = [
   '/chat/:convId',
   '/chat/:convId/info',
   '/contacts',
+  '/contacts/requests',
+  '/contacts/groups',
+  '/contacts/add',
+  '/contacts/apply/:userId',
+  '/user/:userId',
+  '/user/:userId/remark',
   '/me',
   '/me/settings',
+  '/me/settings/blocks',
+  '/me/settings/privacy',
 ] as const;
 
 function matches(pattern: string, path: string): boolean {

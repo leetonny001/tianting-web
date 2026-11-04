@@ -1,21 +1,29 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Confirm } from '../components/Dialog';
 import { TopBar } from '../components/TopBar';
 import { useIm } from '../im/ImProvider';
-import { usePendingCount } from '../im/hooks';
+import { useBlocks, usePendingCount } from '../im/hooks';
 import { APP_NAME, APP_VERSION, BUILD_ID } from '../lib/config';
 
-/** 设置（PRD-ui F-UI-16）。"隐私""黑名单"依赖服务端社交功能，随 PRD-social 上线。 */
+/** 设置（PRD-ui F-UI-16）。 */
 export function SettingsPage() {
   const { logout } = useIm();
   const pending = usePendingCount();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
+  const blocks = useBlocks();
   return (
     <div className="tt-page">
       <TopBar title="设置" back="/me" />
       <div className="tt-scroll">
+        <Link className="tt-row" to="/me/settings/privacy" data-testid="settings-privacy">
+          隐私
+        </Link>
+        <Link className="tt-row tt-row-between" to="/me/settings/blocks" data-testid="settings-blocks">
+          <span>黑名单</span>
+          {blocks.length > 0 && <span className="tt-secondary">{blocks.length}</span>}
+        </Link>
         <div className="tt-card" data-testid="about">
           <div className="tt-row-static">关于{APP_NAME}</div>
           <div className="tt-row-static tt-secondary">

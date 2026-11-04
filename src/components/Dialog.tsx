@@ -9,6 +9,7 @@ export function Dialog({
   actions,
   onDismiss,
   dismissible = true,
+  sheet = false,
   testId,
 }: {
   title?: ReactNode;
@@ -16,6 +17,8 @@ export function Dialog({
   actions: ReactNode;
   onDismiss?: () => void;
   dismissible?: boolean;
+  /** 底部菜单样式（申请详情，F-UI-25 规则 4）。 */
+  sheet?: boolean;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -29,12 +32,12 @@ export function Dialog({
   }, [dismissible, onDismiss]);
   return (
     <div
-      className="tt-scrim"
+      className={`tt-scrim${sheet ? ' tt-scrim-sheet' : ''}`}
       onClick={() => dismissible && onDismiss?.()}
       data-testid={testId ? `${testId}-scrim` : undefined}
     >
       <div
-        className="tt-dialog"
+        className={`tt-dialog${sheet ? ' tt-sheet' : ''}`}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

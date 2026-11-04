@@ -1,7 +1,25 @@
 import { avatarColorIndex, avatarInitial } from '@tianting/sdk';
+import { useState } from 'react';
 
-/** 头像（PRD-ui F-UI-21）：一期只有占位头像；用户圆形，群圆角方形。图片头像随 users 命令（FE-103）接入。 */
-export function Avatar({ id, name, size, group = false }: { id: string; name: string; size: number; group?: boolean }) {
+/**
+ * 头像（PRD-ui F-UI-21）：用户圆形，群圆角方形。有 https 图片地址时显示图片（加载失败回到占位）；
+ * 其他地址一律不请求。
+ */
+export function Avatar({
+  id,
+  name,
+  size,
+  group = false,
+  src,
+}: {
+  id: string;
+  name: string;
+  size: number;
+  group?: boolean;
+  src?: string;
+}) {
+  const [failed, setFailed] = useState('');
+  const image = src?.startsWith('https://') && failed !== src ? src : '';
   return (
     <span
       className={`tt-avatar${group ? ' tt-avatar-group' : ''}`}
@@ -14,7 +32,27 @@ export function Avatar({ id, name, size, group = false }: { id: string; name: st
       aria-hidden="true"
       data-testid="avatar"
     >
-      {avatarInitial(name)}
+      {image ? (
+        <img
+          className="tt-avatar-img"
+          src={image}
+          alt=""
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          onError={() => setFailed(image)}
+        />
+      ) : (
+        avatarInitial(name)
+      )}
+    </span>
+  );
+}
+
+/** "官方"标识（F-UI-14 规则 6）。 */
+export function OfficialTag() {
+  return (
+    <span className="tt-official" data-testid="official">
+      官方
     </span>
   );
 }

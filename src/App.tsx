@@ -12,10 +12,18 @@ import { safeRedirect } from './lib/routes';
 import { ChatInfoPage } from './pages/ChatInfoPage';
 import { ChatPage } from './pages/ChatPage';
 import { ChatsPage } from './pages/ChatsPage';
+import { AddFriendPage } from './pages/AddFriendPage';
+import { ApplyPage } from './pages/ApplyPage';
+import { BlocksPage } from './pages/BlocksPage';
 import { ContactsPage } from './pages/ContactsPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MePage } from './pages/MePage';
+import { PrivacyPage } from './pages/PrivacyPage';
+import { RemarkPage } from './pages/RemarkPage';
+import { RequestsPage } from './pages/RequestsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UserPage } from './pages/UserPage';
 
 export function App({ factory }: { factory?: ClientFactory }) {
   return (
@@ -75,6 +83,20 @@ export function AppRoutes() {
             </Authed>
           }
         />
+        {(
+          [
+            ['/contacts/requests', <RequestsPage />],
+            ['/contacts/groups', <GroupsPage />],
+            ['/contacts/add', <AddFriendPage />],
+            ['/contacts/apply/:userId', <ApplyPage />],
+            ['/user/:userId', <UserPage />],
+            ['/user/:userId/remark', <RemarkPage />],
+            ['/me/settings/blocks', <BlocksPage />],
+            ['/me/settings/privacy', <PrivacyPage />],
+          ] as const
+        ).map(([path, page]) => (
+          <Route key={path} path={path} element={<Authed>{page}</Authed>} />
+        ))}
         <Route
           path="/me"
           element={
@@ -149,7 +171,8 @@ function SessionEffects() {
   useEffect(
     () =>
       client?.on('sendFailed', (_conv, _id, err) => {
-        if (typeof err === 'number') toast(messageFor(err, 'send'));
+        // 4035 / 4036 / 4137 在聊天页插入提示条，不弹轻提示（F-UI-31）。
+        if (typeof err === 'number' && err !== 4035 && err !== 4036 && err !== 4137) toast(messageFor(err, 'send'));
       }) as (() => void) | undefined,
     [client, toast],
   );

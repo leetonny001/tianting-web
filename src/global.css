@@ -673,3 +673,168 @@ a {
   font-size: var(--tt-font-caption);
   color: var(--tt-color-text-tertiary);
 }
+
+/* 社交页面（PRD-ui F-UI-13、14、25～32） */
+.tt-avatar {
+  overflow: hidden;
+}
+.tt-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tt-official {
+  display: inline-block;
+  padding: 0 var(--tt-space-1);
+  border-radius: var(--tt-radius-sm);
+  background: var(--tt-color-surface-selected);
+  color: var(--tt-color-brand);
+  font-size: var(--tt-font-caption);
+  font-weight: 400;
+  vertical-align: middle;
+}
+.tt-tag {
+  flex-shrink: 0;
+  color: var(--tt-color-text-tertiary);
+  font-size: var(--tt-font-caption);
+}
+.tt-row-between {
+  justify-content: space-between;
+  gap: var(--tt-space-3);
+}
+.tt-count-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--tt-color-badge-bg);
+  color: var(--tt-color-on-badge);
+  font-size: var(--tt-font-caption);
+  line-height: 18px;
+  text-align: center;
+}
+.tt-group-letter {
+  margin: 0;
+  padding: var(--tt-space-1) var(--tt-space-4);
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-caption);
+  font-weight: 400;
+}
+.tt-user-row {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-3);
+  min-height: 56px;
+  padding: var(--tt-space-2) var(--tt-space-4);
+  border-bottom: 1px solid var(--tt-color-divider);
+  background: var(--tt-color-surface);
+  color: inherit;
+  text-decoration: none;
+}
+.tt-user-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--tt-space-3);
+  min-width: 0;
+}
+.tt-user-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tt-grow {
+  flex: 1;
+}
+.tt-clickable {
+  cursor: pointer;
+}
+.tt-state-text {
+  flex-shrink: 0;
+  color: var(--tt-color-text-tertiary);
+  font-size: var(--tt-font-small);
+}
+.tt-btn-small {
+  flex-shrink: 0;
+  min-height: var(--tt-size-touch-min);
+  padding: 0 var(--tt-space-3);
+  font-size: var(--tt-font-small);
+}
+.tt-skeleton-small {
+  width: 40px;
+  height: 40px;
+}
+.tt-list-head {
+  margin: 0;
+  padding: var(--tt-space-2) var(--tt-space-4);
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-small);
+}
+.tt-block-btn {
+  display: block;
+  width: 100%;
+  padding: var(--tt-space-6) var(--tt-space-4);
+}
+.tt-search {
+  padding: var(--tt-space-3) var(--tt-space-4);
+  background: var(--tt-color-surface);
+}
+.tt-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tt-space-3);
+  padding: var(--tt-space-4);
+}
+.tt-textarea {
+  padding: var(--tt-space-2) var(--tt-space-3);
+  resize: none;
+}
+.tt-counter {
+  align-self: flex-end;
+  color: var(--tt-color-text-tertiary);
+  font-size: var(--tt-font-caption);
+}
+.tt-note {
+  margin: 0;
+  padding: var(--tt-space-2) var(--tt-space-4);
+}
+.tt-topbar-action {
+  min-height: var(--tt-size-touch-min);
+  padding: 0 var(--tt-space-2);
+}
+.tt-switch {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--tt-color-brand);
+}
+.tt-scrim-sheet {
+  align-items: flex-end;
+}
+.tt-sheet {
+  width: 100%;
+  max-width: none;
+  border-radius: var(--tt-radius-md) var(--tt-radius-md) 0 0;
+}
+.tt-sheet .tt-dialog-actions {
+  flex-direction: column;
+}
+.tt-sheet-text {
+  margin: var(--tt-space-3) 0 var(--tt-space-1);
+  overflow-wrap: anywhere;
+}
+.tt-permission-tip {
+  align-self: center;
+  max-width: 80%;
+  margin: var(--tt-space-1) auto;
+  color: var(--tt-color-text-tertiary);
+  font-size: var(--tt-font-caption);
+  text-align: center;
+}
+.tt-msg-avatar-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}

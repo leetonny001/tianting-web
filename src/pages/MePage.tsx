@@ -1,24 +1,28 @@
 import { Link } from 'react-router';
-import { Avatar } from '../components/Avatar';
+import { Avatar, OfficialTag } from '../components/Avatar';
 import { TabBar } from '../components/TabBar';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { useSelf } from '../im/ImProvider';
+import { useOfficial, useProfile } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 
-/** 我（PRD-ui F-UI-15）：一期不提供资料编辑。显示名随 users 命令（FE-103）接入昵称。 */
+/** 我（PRD-ui F-UI-15）：一期不提供资料编辑。显示名来自 users 缓存里的自己。 */
 export function MePage() {
   const userId = useSelf();
   const toast = useToast();
+  const profile = useProfile(userId);
+  const official = useOfficial();
+  const name = profile?.nickname || userId;
   return (
     <div className="tt-page">
       <TopBar title="我" />
       <div className="tt-scroll">
         <div className="tt-card tt-info-head">
-          <Avatar id={userId} name={userId} size={64} />
+          <Avatar id={userId} name={name} size={64} src={profile?.avatar} />
           <div>
             <div className="tt-info-name tt-large" data-testid="me-name">
-              {userId}
+              {name} {official && <OfficialTag />}
             </div>
             <div className="tt-secondary">
               账号：{userId}

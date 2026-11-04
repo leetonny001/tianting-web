@@ -2,6 +2,7 @@
 import {
   BookUser,
   ChevronLeft,
+  ChevronRight,
   CircleAlert,
   CirclePlus,
   CircleUserRound,
@@ -19,6 +20,7 @@ const icons = {
   plus: CirclePlus,
   addFriend: UserPlus,
   back: ChevronLeft,
+  forward: ChevronRight,
   more: Ellipsis,
   failed: CircleAlert,
   loading: LoaderCircle,
