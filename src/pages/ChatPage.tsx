@@ -7,7 +7,7 @@ import { Confirm } from '../components/Dialog';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
-import { useClient, useSelf } from '../im/ImProvider';
+import { useClient, useIm, useSelf } from '../im/ImProvider';
 import {
   useConnState,
   useConversations,
@@ -75,6 +75,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const retry = liveMessage(retryId ?? undefined);
   const menuMessage = liveMessage(menuAt?.id);
   const menu = menuAt && menuMessage ? { ...menuAt, m: menuMessage } : null;
+  const { drafts } = useIm();
   const mute = useMute(convId);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -126,6 +127,12 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         ? { tip: '群聊不存在或已解散', bar: '群聊不存在或已解散' }
         : null;
   const probing = type === 'group' && unknown && probe !== 4033 && probe !== 4043;
+
+  // 不能发送时输入内容不保留（F-UI-33 规则 5）。子组件 Composer 卸载时存的草稿先于这里运行；禁言不走这条，内容保留。
+  const isBlocked = blocked !== null;
+  useEffect(() => {
+    if (isBlocked) drafts.remove(convId);
+  }, [isBlocked, drafts, convId]);
 
   // 打开会话时加载最新一页（F-MSG-05 规则 3）。
   useEffect(() => {

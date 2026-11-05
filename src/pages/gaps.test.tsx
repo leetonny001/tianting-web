@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderLoggedIn, settle } from '../test/harness';
 
@@ -63,6 +63,17 @@ describe('被移出 / 解散 / 未知会话（F-UI-33）', () => {
     await act(async () => c.receive({ cmd: 'event', data: { type: 'convAdded', conv: baseConv(G) } }));
     await settle();
     expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+  });
+
+  it('被移出后输入内容不保留，重新进群时输入框是空的（F-UI-33 规则 5）', async () => {
+    const { c } = await renderLoggedIn(at(G), { convs: [{ convId: G, name: 'g1' }] });
+    fireEvent.change(screen.getByTestId('composer-input'), { target: { value: '没发出去的话' } });
+    await act(async () => c.receive({ cmd: 'event', data: { type: 'convRemoved', convId: G, reason: 'removed' } }));
+    await settle();
+    expect(screen.getByTestId('composer-disabled')).toBeInTheDocument();
+    await act(async () => c.receive({ cmd: 'event', data: { type: 'convAdded', conv: baseConv(G) } }));
+    await settle();
+    expect(screen.getByTestId('composer-input')).toHaveValue('');
   });
 
   it('打开不在列表里的群：sync 返回前只显示加载状态；4033 → "你已不在该群"（AC-UI-33-10）', async () => {
