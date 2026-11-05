@@ -208,7 +208,7 @@ test('只用键盘：打开会话 → 发送 → 打开聊天信息侧板 → Es
   await page.keyboard.press('Enter');
   const panel = page.getByTestId('side-panel');
   await expect(panel).toBeVisible();
-  expect((await panel.boundingBox())!.width).toBe(360);
+  expect(Math.abs((await panel.boundingBox())!.width - 360)).toBeLessThanOrEqual(1); // 滑入动画中有小数
   expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true);
   await expectFocusVisible(page);
   await page.keyboard.press('Escape');
