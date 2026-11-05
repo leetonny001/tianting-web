@@ -229,6 +229,55 @@ describe('禁言条（AC-ADM-40-4、40-5、40-6、41-6、AC-UI-41-2～5）', () 
     expect(screen.getByTestId('composer-disabled').textContent).toBe('你已被禁言');
   });
 
+  describe('全群禁言（FE-354、TC-UI-41-07、AC-UI-41-6）', () => {
+    const ALL = { scope: 'groupAll', groupId: 'g1', mutedUntil: null };
+    const withRole = (myRole?: string, extra = {}) => [
+      { ...convs[0]!, ...(myRole ? { myRole } : {}), ...extra },
+      convs[1]!,
+      convs[2]!,
+    ];
+
+    it('muted {scope: groupAll}：禁用条为"群主已开启全员禁言"，没有解除时间；关闭后输入框恢复', async () => {
+      const { c } = await renderLoggedIn(at(G1), { convs: withRole('member') });
+      expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+      await act(async () => c.receive(event({ type: 'muted', ...ALL })));
+      await settle();
+      expect(screen.queryByTestId('composer-input')).not.toBeInTheDocument();
+      expect(screen.getByTestId('composer-disabled').textContent).toBe('群主已开启全员禁言');
+      await act(async () => c.receive(event({ type: 'unmuted', scope: 'groupAll', groupId: 'g1' })));
+      await settle();
+      expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+    });
+
+    it('convs 带 allMuted：一进聊天页就是禁用条；只影响该群', async () => {
+      await renderLoggedIn(at(G1), { convs: withRole('member', { allMuted: true }) });
+      expect(screen.getByTestId('composer-disabled').textContent).toBe('群主已开启全员禁言');
+    });
+
+    it('别的群的聊天页没有禁用条', async () => {
+      const { c } = await renderLoggedIn(at(G2), { convs: withRole('member') });
+      await act(async () => c.receive(event({ type: 'muted', ...ALL })));
+      await settle();
+      expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+    });
+
+    it.each(['owner', 'admin'])('%s 不受限：收到事件后输入框还在', async (role) => {
+      const { c } = await renderLoggedIn(at(G1), { convs: withRole(role, { allMuted: true }) });
+      await act(async () => c.receive(event({ type: 'muted', ...ALL })));
+      await settle();
+      expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+      expect(screen.queryByTestId('composer-disabled')).not.toBeInTheDocument();
+    });
+
+    it('单独禁言优先：群内禁言显示解除时间，不显示全员禁言文案', async () => {
+      const until = new Date(2031, 5, 7, 8, 9).getTime();
+      const { c } = await renderLoggedIn(at(G1), { convs: withRole('member', { allMuted: true }) });
+      await act(async () => c.receive(event({ type: 'muted', scope: 'group', groupId: 'g1', mutedUntil: until })));
+      await settle();
+      expect(screen.getByTestId('composer-disabled').textContent).toBe('你已被禁言，解除时间：06-07 08:09');
+    });
+  });
+
   it('auth ack 带 mutedUntil：一进聊天页就是禁言条（AC-ADM-40-6）', async () => {
     await renderLoggedIn(at(G2), { convs, mutedUntil: null });
     expect(screen.queryByTestId('composer-input')).not.toBeInTheDocument();

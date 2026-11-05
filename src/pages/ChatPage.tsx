@@ -24,7 +24,7 @@ import {
 import { copyText } from '../lib/clipboard';
 import { useEscape } from '../lib/focus';
 import { isWide } from '../lib/layout';
-import { MESSAGE_DELETED, messageFor, mutedText } from '../lib/errors';
+import { GROUP_ALL_MUTED, MESSAGE_DELETED, messageFor, mutedText } from '../lib/errors';
 import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
@@ -308,7 +308,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         </div>
       ) : mute ? (
         <div className="tt-composer-disabled" data-testid="composer-disabled">
-          {mutedText(mute.mutedUntil)}
+          {mute.scope === 'groupAll' ? GROUP_ALL_MUTED : mutedText(mute.mutedUntil)}
         </div>
       ) : (
         <Composer

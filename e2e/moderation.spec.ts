@@ -150,6 +150,39 @@ test('用户级禁言：单聊和群聊都显示禁言条；解除后输入框�
   await expect(page.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
 });
 
+test('全群禁言：普通成员显示"群主已开启全员禁言"，群主仍可发言；关闭后成员恢复；离线开启上线即禁用（AC-UI-41-6、AC-ADM-42-1、42-2）', async ({
+  browser,
+}) => {
+  const [o, m, m2] = [uid('o'), uid('m'), uid('n')];
+  const groupId = uid('g');
+  const convId = `group:${groupId}`;
+  await admin('POST', '/admin/users/import', { users: [o, m, m2].map((userId) => ({ userId })) });
+  await signed('/admin/groups', { groupId, name: '全员群', members: [o, m, m2], owner: o }); // 托管群指定群主要 social.settings
+  const owner = await loginAs(browser, o, chat(convId));
+  const member = await loginAs(browser, m, chat(convId));
+  await expect(member.getByTestId('composer-input')).toBeVisible();
+
+  await signed('/admin/mute', { scope: 'groupAll', groupId, reason: 'e2e' });
+  const bar = member.getByTestId('composer-disabled');
+  await expect(bar).toHaveText('群主已开启全员禁言', { timeout: 3_000 });
+  await expect(member.getByTestId('composer-input')).toHaveCount(0);
+
+  await owner.waitForTimeout(500); // 群主也收到事件，输入框不能消失
+  await owner.getByTestId('composer-input').fill('群主发言');
+  await owner.getByTestId('composer-input').press('Enter');
+  await expect(owner.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
+  await expect(member.getByTestId('message').last()).toContainText('群主发言');
+
+  const offline = await loginAs(browser, m2, chat(convId));
+  await expect(offline.getByTestId('composer-disabled')).toHaveText('群主已开启全员禁言');
+
+  await signed('/admin/unmute', { scope: 'groupAll', groupId, reason: 'e2e' });
+  await expect(member.getByTestId('composer-input')).toBeVisible({ timeout: 3_000 });
+  await member.getByTestId('composer-input').fill('恢复了');
+  await member.getByTestId('composer-input').press('Enter');
+  await expect(member.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
+});
+
 test('离线时被用户级禁言（永久）：上线打开任一会话，输入框一开始就没有（AC-ADM-40-6、AC-UI-41-5）', async ({
   browser,
 }) => {

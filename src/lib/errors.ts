@@ -77,4 +77,7 @@ export function mutedText(until: number | null): string {
   return until !== null ? `你已被禁言，解除时间：${formatMonthDayTime(until)}` : messageFor(4031);
 }
 
+/** 全群禁言的禁言条（PRD-ui F-UI-41 规则 3，AC-UI-41-6）。 */
+export const GROUP_ALL_MUTED = '群主已开启全员禁言';
+
 export const KNOWN_CODES = Object.keys(BY_CODE).map(Number);
