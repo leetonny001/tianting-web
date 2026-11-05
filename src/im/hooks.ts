@@ -10,6 +10,7 @@ import {
   type GroupMemberInfo,
   type IMClient,
   type Message,
+  type MuteInfo,
   type SocialSettings,
   type UserProfile,
 } from '@tianting/sdk';
@@ -41,6 +42,8 @@ class ClientStore {
   /** 私聊权限提示条的来源（F-UI-31）：convId → clientMsgId → 错误码。只在内存，刷新后消失。 */
   sendTips = new Map<string, Map<string, number>>();
   tipsVersion = 0;
+  /** 禁言状态的版本号：muteChanged 时加一，取值用 client.muteState（按服务端时间判断）。 */
+  muteVersion = 0;
   private msgs = new Map<string, Message[]>();
   private listeners = new Set<Listener>();
 
@@ -94,6 +97,10 @@ class ClientStore {
     c.on('friendRequests', (r) => set(() => (this.requests = r))());
     c.on('blocks', (list) => set(() => (this.blocks = list))());
     c.on('socialSettings', (v) => set(() => (this.settings = v))());
+    c.on(
+      'muteChanged',
+      set(() => this.muteVersion++),
+    );
     c.on('sendFailed', (convId, id, err) => {
       if (err !== 4035 && err !== 4036 && err !== 4137) return;
       set(() => {
@@ -168,6 +175,12 @@ export const useTipsVersion = () => useStore((s) => s.tipsVersion);
 export function useSendTips(convId: string): ReadonlyMap<string, number> | undefined {
   useTipsVersion();
   return storeOf(useClient()).sendTips.get(convId);
+}
+
+/** 这个会话当前的禁言；没有被禁言时为 null（PRD-ui F-UI-41）。 */
+export function useMute(convId: string): MuteInfo | null {
+  useStore((s) => s.muteVersion);
+  return useClient().muteState(convId);
 }
 
 /** 本地关系（social 状态变化时重新计算）。 */

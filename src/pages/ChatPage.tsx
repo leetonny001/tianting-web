@@ -14,6 +14,7 @@ import {
   useDisplayName,
   useFriends,
   useMessages,
+  useMute,
   useProfile,
   useProfiles,
   useSendTips,
@@ -21,7 +22,7 @@ import {
   useSocialSettings,
 } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
-import { messageFor } from '../lib/errors';
+import { MESSAGE_DELETED, messageFor, mutedText } from '../lib/errors';
 import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
@@ -61,8 +62,17 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const [probe, setProbe] = useState<'idle' | 'loading' | 4033 | 4043>('idle');
   const [history, setHistory] = useState<'idle' | 'loading' | 'end' | 'error'>('idle');
   const [newCount, setNewCount] = useState(0);
-  const [retry, setRetry] = useState<Message | null>(null);
-  const [menu, setMenu] = useState<{ m: Message; top: number; below: boolean } | null>(null);
+  // 只记 clientMsgId，渲染时从最新列表取：打开着菜单时消息被删除，这里不能留着一份原文（F-UI-42）。
+  const [retryId, setRetryId] = useState<string | null>(null);
+  const [menuAt, setMenuAt] = useState<{ id: string; top: number; below: boolean } | null>(null);
+  const liveMessage = (id: string | undefined) => {
+    const m = id === undefined ? undefined : messages.find((x) => x.clientMsgId === id);
+    return m && !m.deleted ? m : null;
+  };
+  const retry = liveMessage(retryId ?? undefined);
+  const menuMessage = liveMessage(menuAt?.id);
+  const menu = menuAt && menuMessage ? { ...menuAt, m: menuMessage } : null;
+  const mute = useMute(convId);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const prevLen = useRef(0);
@@ -220,6 +230,10 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
             <div className="tt-divider" key={r.key}>
               {formatTime(r.ts)}
             </div>
+          ) : r.m.deleted ? (
+            <div className="tt-tip" key={r.m.clientMsgId} data-testid="msg-deleted">
+              {MESSAGE_DELETED}
+            </div>
           ) : r.m.type === 'tip' ? (
             <TipRow key={r.m.clientMsgId} m={r.m} convId={convId} />
           ) : (
@@ -229,8 +243,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 self={r.m.from === self}
                 showName={type === 'group' && r.m.from !== self}
                 userState={userState}
-                onRetry={() => setRetry(r.m)}
-                onMenu={(top, below) => setMenu({ m: r.m, top, below })}
+                onRetry={() => setRetryId(r.m.clientMsgId)}
+                onMenu={(top, below) => setMenuAt({ id: r.m.clientMsgId, top, below })}
               />
               {tipFor.get(r.m.clientMsgId) !== undefined && (
                 <div className="tt-permission-tip" data-testid="permission-tip">
@@ -281,6 +295,10 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         <div className="tt-composer-disabled" data-testid="composer-disabled">
           {blocked.bar}
         </div>
+      ) : mute ? (
+        <div className="tt-composer-disabled" data-testid="composer-disabled">
+          {mutedText(mute.mutedUntil)}
+        </div>
       ) : (
         <Composer
           onSend={(text) => {
@@ -298,15 +316,15 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           text="重发该消息？"
           ok="重发"
           testId="retry-dialog"
-          onCancel={() => setRetry(null)}
+          onCancel={() => setRetryId(null)}
           onOk={() => {
             c.retry(convId, retry.clientMsgId);
-            setRetry(null);
+            setRetryId(null);
           }}
         />
       )}
       {menu && (
-        <div className="tt-menu-layer" onClick={() => setMenu(null)} onContextMenu={(e) => e.preventDefault()}>
+        <div className="tt-menu-layer" onClick={() => setMenuAt(null)} onContextMenu={(e) => e.preventDefault()}>
           <div
             className="tt-menu tt-bubble-menu"
             role="menu"
@@ -321,7 +339,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 onClick={async () => {
                   const ok = await copyText(menu.m.body.text ?? '');
                   toast(ok ? '已复制' : '复制失败，请长按文字手动复制');
-                  setMenu(null);
+                  setMenuAt(null);
                 }}
               >
                 复制
@@ -332,7 +350,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 role="menuitem"
                 onClick={() => {
                   c.retry(convId, menu.m.clientMsgId); // 菜单里的"重发"不再二次确认（F-UI-09 规则 3）
-                  setMenu(null);
+                  setMenuAt(null);
                 }}
               >
                 重发

@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 
 import { useIm } from '../im/ImProvider';
 import { APP_NAME, DEMO_LOGIN } from '../lib/config';
-import { messageFor } from '../lib/errors';
+import { bannedText, messageFor } from '../lib/errors';
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_NICKNAME = 32;
@@ -55,7 +55,17 @@ export function LoginPage() {
         setError('登录服务未开启');
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { userId?: string; token?: string; code?: number };
+      const data = (await res.json().catch(() => ({}))) as {
+        userId?: string;
+        token?: string;
+        code?: number;
+        details?: { bannedUntil?: number | null };
+      };
+      // 4034 不是 ws 码，文案在这里维护（PRD-ui F-UI-43 规则 1）。
+      if (data.code === 4034) {
+        setError(bannedText(data.details?.bannedUntil));
+        return;
+      }
       if (!res.ok || !data.token || !data.userId) {
         setError(messageFor(data.code ?? 5000));
         return;

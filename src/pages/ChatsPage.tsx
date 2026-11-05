@@ -15,6 +15,7 @@ import {
   useFriends,
   useProfile,
 } from '../im/hooks';
+import { MESSAGE_DELETED } from '../lib/errors';
 import { chatPath } from '../lib/routes';
 import { formatTime } from '../lib/time';
 import { StartChatDialog } from './StartChatDialog';
@@ -151,8 +152,9 @@ function Skeleton() {
 const summaryText = (c: Conversation) => {
   const m = c.lastMsg;
   if (!m) return '';
+  if (m.deleted) return MESSAGE_DELETED;
   // 提示消息用服务端摘要（F-UI-40 规则 3），不加发送者前缀。
-  return m.type === 'text' || m.type === 'tip' ? m.text : '[暂不支持的消息]';
+  return m.type === 'text' || m.type === 'tip' ? (m.text ?? '') : '[暂不支持的消息]';
 };
 
 /** 群摘要的发送者前缀（PRD-ui F-UI-04 规则 5）：显示名未就绪时先显示 userId，就绪后替换。 */
@@ -192,7 +194,9 @@ const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; 
           {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
         </span>
         <span className="tt-conv-summary">
-          {group && from && from !== self && conv.lastMsg?.type !== 'tip' && <SenderPrefix userId={from} />}
+          {group && from && from !== self && conv.lastMsg?.type !== 'tip' && !conv.lastMsg?.deleted && (
+            <SenderPrefix userId={from} />
+          )}
           {summaryText(conv)}
         </span>
       </span>

@@ -1,6 +1,6 @@
 import { IMClient, type FatalReason } from '@tianting/sdk';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { wsURL } from '../lib/config';
+import { DEMO_LOGIN, wsURL } from '../lib/config';
 import { clearSession, loadSession, saveSession, type Session } from '../lib/session';
 
 /** 测试注入：创建 SDK 客户端的方式（组件测试用 FakeTransport）。 */
@@ -38,6 +38,17 @@ export function ImProvider({ children, factory = defaultFactory }: { children: R
     c.connect(s.token); // 已经在连接时 SDK 只更新 token，重复调用没有副作用
     return c.on('fatal', (r) => setFatal(r)) as () => void;
   }, [state]);
+
+  // SDK 调试接口（AC-ADM-31-3）：只在开发 / 演示构建里挂到 window，生产构建没有。
+  useEffect(() => {
+    const c = state.client;
+    if (!DEMO_LOGIN || !c) return;
+    const w = window as unknown as { __tiantingDebug?: { exportMemory(): unknown } };
+    w.__tiantingDebug = { exportMemory: () => c.debugExport() };
+    return () => {
+      delete w.__tiantingDebug;
+    };
+  }, [state.client]);
 
   const login = useCallback(
     (s: Session) => {

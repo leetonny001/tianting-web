@@ -7,7 +7,7 @@ import { ToastProvider, useToast } from './components/Toast';
 import { ImProvider, useIm, type ClientFactory } from './im/ImProvider';
 import { usePendingCount, useTotalUnread } from './im/hooks';
 import { APP_NAME } from './lib/config';
-import { messageFor } from './lib/errors';
+import { bannedText, messageFor } from './lib/errors';
 import { isGroupConv } from './lib/group';
 import { safeRedirect } from './lib/routes';
 import { ChatInfoPage } from './pages/ChatInfoPage';
@@ -153,6 +153,7 @@ const KICK_TEXT: Record<string, string> = {
 
 /** 被踢弹窗文案（PRD-ui F-UI-18）：先按 kicked.reason，不认识时按关闭码。 */
 export function fatalText(r: FatalReason): string {
+  if (r.kind === 'kicked' && r.reason === 'suspended') return bannedText(r.until);
   if (r.kind === 'kicked' && KICK_TEXT[r.reason]) return KICK_TEXT[r.reason]!;
   if (r.code === 4429) return KICK_TEXT.tooManyConnections!;
   return messageFor(r.code);
@@ -186,8 +187,8 @@ function SessionEffects() {
   useEffect(
     () =>
       client?.on('sendFailed', (_conv, _id, err) => {
-        // 4035 / 4036 / 4137 在聊天页插入提示条，不弹轻提示（F-UI-31）。
-        if (typeof err === 'number' && err !== 4035 && err !== 4036 && err !== 4137) toast(messageFor(err, 'send'));
+        // 4035 / 4036 / 4137 在聊天页插入提示条（F-UI-31），4031 有禁用条（F-UI-41 规则 5），都不弹轻提示。
+        if (typeof err === 'number' && ![4031, 4035, 4036, 4137].includes(err)) toast(messageFor(err, 'send'));
       }) as (() => void) | undefined,
     [client, toast],
   );

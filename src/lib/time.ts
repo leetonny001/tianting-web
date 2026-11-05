@@ -17,6 +17,17 @@ export function formatTime(ts: number, now: number = Date.now()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`;
 }
 
+/** YYYY-MM-DD HH:mm（本机时区）。 */
+export function formatDateTime(ts: number): string {
+  return `${new Date(ts).getFullYear()}-${formatMonthDayTime(ts)}`;
+}
+
+/** MM-DD HH:mm（本机时区）。 */
+export function formatMonthDayTime(ts: number): string {
+  const d = new Date(ts);
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export const DIVIDER_GAP_MS = 5 * 60 * 1000;
 
 /** 第 i 条消息前是否显示时间分隔：第一条显示；与上一条间隔超过 5 分钟显示。 */

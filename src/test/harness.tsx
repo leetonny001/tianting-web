@@ -1,4 +1,4 @@
-import { IMClient } from '@tianting/sdk';
+import { IMClient, type Clock } from '@tianting/sdk';
 import { FakeTransport, type FakeConnection } from '@tianting/sdk/testing';
 import { act, render } from '@testing-library/react';
 import { App } from '../App';
@@ -17,9 +17,10 @@ export interface Conv {
   name?: string;
   maxSeq?: number;
   unread?: number;
-  lastMsg?: { msgId: string; from: string; type: string; text: string; ts: number } | null;
+  lastMsg?: { msgId: string; from: string; type: string; text?: string; ts: number; deleted?: boolean } | null;
   updatedAt?: number;
   memberCount?: number;
+  mutedUntil?: number | null;
 }
 
 export function serverConv(p: Conv) {
@@ -42,7 +43,16 @@ export function serverConv(p: Conv) {
  */
 export async function renderLoggedIn(
   path: string,
-  opts: { userId?: string; convs?: Conv[]; truncated?: boolean } = {},
+  opts: {
+    userId?: string;
+    convs?: Conv[];
+    truncated?: boolean;
+    clock?: Clock;
+    /** auth ack 的服务端时间，默认等于本机时间。 */
+    serverTime?: number;
+    /** auth ack 的 mutedUntil；不传就没有这个字段。 */
+    mutedUntil?: number | null;
+  } = {},
 ) {
   const userId = opts.userId ?? 'alice';
   const transport = new FakeTransport();
@@ -51,6 +61,7 @@ export async function renderLoggedIn(
     new IMClient({
       url: 'ws://test/ws',
       transport,
+      clock: opts.clock,
       browserEvents: false,
       isVisible: () => true,
       newId: () => `cid-${String(++n).padStart(4, '0')}`,
@@ -61,7 +72,11 @@ export async function renderLoggedIn(
   const c: FakeConnection = transport.current;
   await act(async () => {
     c.open();
-    c.ack('auth', { userId, serverTime: Date.now() });
+    c.ack('auth', {
+      userId,
+      serverTime: opts.serverTime ?? opts.clock?.now() ?? Date.now(),
+      ...(opts.mutedUntil !== undefined ? { mutedUntil: opts.mutedUntil } : {}),
+    });
   });
   await settle();
   await act(async () =>

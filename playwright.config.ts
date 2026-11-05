@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { CALLERS_JSON, QUARANTINE_KEY } from './e2e/caller';
 
 // 端到端测试连真实的 im-server（测试模式 + 演示登录）：服务端源码默认在同级目录 ../tianting-server/server（或旧名 ../im-mvp/server），
 // 也可以用 TIANTING_SERVER_DIR 指定。
@@ -9,7 +10,10 @@ const serverDir = resolve(
   process.env.TIANTING_SERVER_DIR ??
     (existsSync('../tianting-server/server') ? '../tianting-server/server' : '../im-mvp/server'),
 );
-const db = join(mkdtempSync(join(tmpdir(), 'tt-web-e2e-')), 'im.db');
+const tmp = mkdtempSync(join(tmpdir(), 'tt-web-e2e-'));
+const db = join(tmp, 'im.db');
+const callers = join(tmp, 'callers.json');
+writeFileSync(callers, CALLERS_JSON, { mode: 0o600 }); // 服务端要求 0600
 export const SERVER = 'http://127.0.0.1:18080';
 export const ADMIN = 'http://127.0.0.1:18081';
 export const WEB = 'http://127.0.0.1:15173';
@@ -41,6 +45,9 @@ export default defineConfig({
         IM_DB: db,
         IM_TEST_MODE: '1',
         IM_DEMO_LOGIN: '1',
+        IM_V13_ADMIN_FEATURES: '1',
+        IM_QUARANTINE_KEY: QUARANTINE_KEY,
+        IM_ADMIN_CALLERS: callers,
         IM_ALLOWED_ORIGINS: `${WEB},http://127.0.0.1:15174`,
       },
     },

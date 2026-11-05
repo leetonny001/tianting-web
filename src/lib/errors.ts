@@ -1,4 +1,5 @@
 import { messageFor as commandMessage } from '@tianting/sdk';
+import { formatDateTime, formatMonthDayTime } from './time';
 
 // 错误文案（PRD-core 第 5 节文案表、PRD-ui F-UI-19）：先查"命令 + 码"，没有单独列出的用该码的默认文案；
 // 从不展示服务端的 msg。errors.json 新增 ws 通道的码时，必须在这里补上文案（errors.test.ts 自动检查）。
@@ -61,6 +62,19 @@ export function messageFor(code: number, cmd?: string, ctx?: { strangerMsgLimit?
   if (special) return special;
   if (BY_CODE[code]) return BY_CODE[code];
   return code >= 5000 ? '服务异常，请稍后重试' : '请求出错';
+}
+
+/** 被删除的消息和会话摘要（PRD-core 第 5 节）。 */
+export const MESSAGE_DELETED = '该消息已被删除';
+
+/** 封禁（4034、kicked.reason = suspended，PRD-core 第 5 节、PRD-ui F-UI-18）：永久（null）或缺字段时没有解封时间。 */
+export function bannedText(until: number | null | undefined): string {
+  return typeof until === 'number' ? `账号已被封禁，解封时间：${formatDateTime(until)}` : '账号已被封禁';
+}
+
+/** 禁言条（4031、muted，PRD-core 第 5 节、PRD-ui F-UI-41）：永久（null）没有解除时间。 */
+export function mutedText(until: number | null): string {
+  return until !== null ? `你已被禁言，解除时间：${formatMonthDayTime(until)}` : messageFor(4031);
 }
 
 export const KNOWN_CODES = Object.keys(BY_CODE).map(Number);
