@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { CALLER_ID, CALLER_SECRET } from './caller';
 
@@ -44,12 +44,38 @@ export async function signed(path: string, body: unknown) {
 }
 
 /** 在新的浏览器上下文里以 userId 登录（两个上下文 = 两个用户互聊）。 */
-export async function loginAs(browser: Browser, userId: string, path = '/login'): Promise<Page> {
-  const ctx = await browser.newContext();
+export async function loginAs(
+  browser: Browser,
+  userId: string,
+  path = '/login',
+  options?: BrowserContextOptions,
+): Promise<Page> {
+  const ctx = await browser.newContext(options);
   const page = await ctx.newPage();
   await page.goto(path);
   await page.getByTestId('login-username').fill(userId);
   await page.getByTestId('login-username').press('Enter');
   await expect(page).not.toHaveURL(/\/login/);
   return page;
+}
+
+/** 宽屏（PRD-ui 2.1 节）：1280×800 且 (hover: hover) and (pointer: fine)。默认的项目是手机（Pixel 7，触屏）。 */
+export const WIDE: BrowserContextOptions = { viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false };
+
+export const chatUrl = (convId: string) => `/chat/${encodeURIComponent(convId)}`;
+export const c2cId = (a: string, b: string) => (a < b ? `c2c:${a}:${b}` : `c2c:${b}:${a}`);
+
+/** 让后面 fail 为 true 期间的 send 返回 code（PRD-ui 2.2 节：routeWebSocket 改写应答），其余帧原样转发。 */
+export async function failSends(page: Page, code = 5000) {
+  const state = { fail: true };
+  await page.routeWebSocket(/\/ws(\?|$)/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => {
+      const f = JSON.parse(String(m)) as { id?: string; cmd?: string };
+      if (f.cmd === 'send' && state.fail) ws.send(JSON.stringify({ id: f.id, cmd: 'ack', error: { code, msg: 'x' } }));
+      else server.send(m);
+    });
+    server.onMessage((m) => ws.send(m));
+  });
+  return state;
 }

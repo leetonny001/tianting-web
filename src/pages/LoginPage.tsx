@@ -1,8 +1,8 @@
 import { countCodePoints } from '@tianting/sdk';
 import { useRef, useState } from 'react';
-
+import { Logo } from '../components/Logo';
 import { useIm } from '../im/ImProvider';
-import { APP_NAME, DEMO_LOGIN } from '../lib/config';
+import { DEMO_LOGIN } from '../lib/config';
 import { bannedText, messageFor } from '../lib/errors';
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -127,16 +127,5 @@ export function LoginPage() {
       </form>
       <p className="tt-login-hint">演示环境：输入任意用户名即可登录</p>
     </main>
-  );
-}
-
-function Logo() {
-  return (
-    <div className="tt-logo">
-      <span className="tt-logo-mark" aria-hidden="true">
-        听
-      </span>
-      <span className="tt-logo-name">{APP_NAME}</span>
-    </div>
   );
 }

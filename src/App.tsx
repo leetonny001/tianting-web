@@ -1,20 +1,35 @@
 import type { FatalReason } from '@tianting/sdk';
-import { useEffect, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  type Location,
+} from 'react-router';
+import { ConnBanner } from './components/ConnBanner';
 import { DemoPanel } from './components/DemoPanel';
 import { Dialog } from './components/Dialog';
+import { SidePanel } from './components/SidePanel';
+import { NavRail } from './components/TabBar';
 import { ToastProvider, useToast } from './components/Toast';
+import { WideEmpty } from './components/WideEmpty';
 import { ImProvider, useIm, type ClientFactory } from './im/ImProvider';
 import { usePendingCount, useTotalUnread } from './im/hooks';
 import { APP_NAME } from './lib/config';
 import { bannedText, messageFor } from './lib/errors';
 import { isGroupConv } from './lib/group';
+import { useWide, wideRoute } from './lib/layout';
 import { safeRedirect } from './lib/routes';
 import { ChatInfoPage } from './pages/ChatInfoPage';
-import { ChatPage } from './pages/ChatPage';
+import { ChatPage, decodeParam } from './pages/ChatPage';
 import { ChatsPage } from './pages/ChatsPage';
 import { AddFriendPage } from './pages/AddFriendPage';
 import { ApplyPage } from './pages/ApplyPage';
+import { AppearancePage } from './pages/AppearancePage';
 import { BlocksPage } from './pages/BlocksPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { GroupInvitePage } from './pages/GroupInvitePage';
@@ -35,9 +50,7 @@ export function App({ factory }: { factory?: ClientFactory }) {
     <BrowserRouter>
       <ImProvider factory={factory}>
         <ToastProvider>
-          <div className="tt-app" data-testid="app">
-            <AppRoutes />
-          </div>
+          <AppRoutes />
         </ToastProvider>
       </ImProvider>
     </BrowserRouter>
@@ -52,87 +65,116 @@ function GroupOnly({ page }: { page: ReactNode }) {
 
 export function AppRoutes() {
   const { session } = useIm();
-  const params = new URLSearchParams(useLocation().search);
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
   const demo = params.get('demo') === '1';
+  const wide = useWide() && !!session;
+  // 侧板后面的聊天页要记到下一次导航：从聊天页打开的资料卡路由里没有会话 ID（3.3 节）。
+  const [chatBehind, setChatBehind] = useState<string | null>(null);
+  const route = wideRoute(location.pathname, chatBehind);
+  if (route.chatBehind !== chatBehind) setChatBehind(route.chatBehind);
+  const panel = wide && route.panel;
+  const mainLocation = panel ? { pathname: route.mainPath, search: '', hash: '', state: null, key: 'main' } : location;
+  const openConv = wide && route.section === 'chats' && route.mainPath.startsWith('/chat/') ? route.mainPath : null;
+  // 窄屏、宽屏共用这一棵树（条件部分只占位）：<main> 里的页面在视口跨过宽屏条件时不重新挂载，
+  // 连接在 ImProvider 里更不受影响（F-UI-02 规则 2）。
   return (
     <>
-      <Routes>
-        {/* 已登录访问 /login：去 redirect 指定的站内页面（校验后），没有就去 /chats（F-UI-01 规则 2、3）。 */}
-        <Route
-          path="/login"
-          element={session ? <Navigate to={safeRedirect(params.get('redirect'))} replace /> : <LoginPage />}
-        />
-        <Route
-          path="/chats"
-          element={
-            <Authed>
-              <ChatsPage />
-            </Authed>
-          }
-        />
-        <Route
-          path="/chat/:convId"
-          element={
-            <Authed>
-              <ChatPage />
-            </Authed>
-          }
-        />
-        <Route
-          path="/chat/:convId/info"
-          element={
-            <Authed>
-              <ChatInfoPage />
-            </Authed>
-          }
-        />
-        <Route
-          path="/contacts"
-          element={
-            <Authed>
-              <ContactsPage />
-            </Authed>
-          }
-        />
-        {(
-          [
-            ['/groups/new', <GroupNewPage />],
-            ['/chat/:convId/notice', <GroupOnly page={<GroupNoticePage />} />],
-            ['/chat/:convId/members', <GroupOnly page={<GroupMembersPage />} />],
-            ['/chat/:convId/invite', <GroupOnly page={<GroupInvitePage />} />],
-            ['/contacts/requests', <RequestsPage />],
-            ['/contacts/groups', <GroupsPage />],
-            ['/contacts/add', <AddFriendPage />],
-            ['/contacts/apply/:userId', <ApplyPage />],
-            ['/user/:userId', <UserPage />],
-            ['/user/:userId/remark', <RemarkPage />],
-            ['/me/settings/blocks', <BlocksPage />],
-            ['/me/settings/privacy', <PrivacyPage />],
-          ] as const
-        ).map(([path, page]) => (
-          <Route key={path} path={path} element={<Authed>{page}</Authed>} />
-        ))}
-        <Route
-          path="/me"
-          element={
-            <Authed>
-              <MePage />
-            </Authed>
-          }
-        />
-        <Route
-          path="/me/settings"
-          element={
-            <Authed>
-              <SettingsPage />
-            </Authed>
-          }
-        />
-        <Route path="*" element={<Navigate to={session ? '/chats' : '/login'} replace />} />
-      </Routes>
+      <div className="tt-app" data-testid="app" data-layout={wide ? 'wide' : 'narrow'}>
+        {wide && <NavRail section={route.section} />}
+        <div className="tt-body">
+          {wide && <ConnBanner global />}
+          <div className="tt-columns">
+            {wide && (
+              <div className="tt-list-col" data-testid="list-column">
+                {route.section === 'chats' ? (
+                  <ChatsPage activeConvId={openConv ? decodeParam(openConv.slice('/chat/'.length)) : undefined} />
+                ) : route.section === 'contacts' ? (
+                  <ContactsPage />
+                ) : (
+                  <MePage />
+                )}
+              </div>
+            )}
+            <main className="tt-main" data-testid="main">
+              <Pages location={mainLocation} wide={wide} />
+              {panel && (
+                <SidePanel closeTo={route.mainPath}>
+                  <Pages location={location} wide={wide} />
+                </SidePanel>
+              )}
+            </main>
+          </div>
+        </div>
+      </div>
       {session && <SessionEffects />}
       {session && demo && <DemoPanel />}
     </>
+  );
+}
+
+/** 路由表。宽屏时列表栏已经有一级页面，主区对应显示空态 / 设置内容（3.3 节）。 */
+function Pages({ location, wide }: { location: Partial<Location> | Location; wide: boolean }) {
+  const { session } = useIm();
+  const params = new URLSearchParams(location.search);
+  return (
+    <Routes location={location}>
+      {/* 已登录访问 /login：去 redirect 指定的站内页面（校验后），没有就去 /chats（F-UI-01 规则 2、3）。 */}
+      <Route
+        path="/login"
+        element={session ? <Navigate to={safeRedirect(params.get('redirect'))} replace /> : <LoginPage />}
+      />
+      <Route
+        path="/chats"
+        element={<Authed>{wide ? <WideEmpty text="选择一个会话开始聊天" /> : <ChatsPage />}</Authed>}
+      />
+      <Route
+        path="/chat/:convId"
+        element={
+          <Authed>
+            <ChatPage />
+          </Authed>
+        }
+      />
+      <Route
+        path="/chat/:convId/info"
+        element={
+          <Authed>
+            <ChatInfoPage />
+          </Authed>
+        }
+      />
+      <Route path="/contacts" element={<Authed>{wide ? <WideEmpty /> : <ContactsPage />}</Authed>} />
+      {(
+        [
+          ['/groups/new', <GroupNewPage />],
+          ['/chat/:convId/notice', <GroupOnly page={<GroupNoticePage />} />],
+          ['/chat/:convId/members', <GroupOnly page={<GroupMembersPage />} />],
+          ['/chat/:convId/invite', <GroupOnly page={<GroupInvitePage />} />],
+          ['/contacts/requests', <RequestsPage />],
+          ['/contacts/groups', <GroupsPage />],
+          ['/contacts/add', <AddFriendPage />],
+          ['/contacts/apply/:userId', <ApplyPage />],
+          ['/user/:userId', <UserPage />],
+          ['/user/:userId/remark', <RemarkPage />],
+          ['/me/settings/blocks', <BlocksPage />],
+          ['/me/settings/privacy', <PrivacyPage />],
+          ['/me/settings/appearance', <AppearancePage />],
+        ] as const
+      ).map(([path, page]) => (
+        <Route key={path} path={path} element={<Authed>{page}</Authed>} />
+      ))}
+      <Route path="/me" element={<Authed>{wide ? <SettingsPage /> : <MePage />}</Authed>} />
+      <Route
+        path="/me/settings"
+        element={
+          <Authed>
+            <SettingsPage />
+          </Authed>
+        }
+      />
+      <Route path="*" element={<Navigate to={session ? '/chats' : '/login'} replace />} />
+    </Routes>
   );
 }
 

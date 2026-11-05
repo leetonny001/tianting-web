@@ -15,7 +15,7 @@ export function SettingsPage() {
   const blocks = useBlocks();
   return (
     <div className="tt-page">
-      <TopBar title="设置" back="/me" />
+      <TopBar title="设置" back="/me" primary />
       <div className="tt-scroll">
         <Link className="tt-row" to="/me/settings/privacy" data-testid="settings-privacy">
           隐私
@@ -23,6 +23,9 @@ export function SettingsPage() {
         <Link className="tt-row tt-row-between" to="/me/settings/blocks" data-testid="settings-blocks">
           <span>黑名单</span>
           {blocks.length > 0 && <span className="tt-secondary">{blocks.length}</span>}
+        </Link>
+        <Link className="tt-row" to="/me/settings/appearance" data-testid="settings-appearance">
+          外观
         </Link>
         <div className="tt-card" data-testid="about">
           <div className="tt-row-static">关于{APP_NAME}</div>

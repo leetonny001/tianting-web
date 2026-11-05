@@ -1,5 +1,5 @@
 import { ConvIdError, IMError, parseConvIdStrict, tipText, type Message } from '@tianting/sdk';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
 import { ConnBanner } from '../components/ConnBanner';
@@ -22,6 +22,8 @@ import {
   useSocialSettings,
 } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
+import { useEscape } from '../lib/focus';
+import { isWide } from '../lib/layout';
 import { MESSAGE_DELETED, messageFor, mutedText } from '../lib/errors';
 import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
@@ -64,7 +66,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const [newCount, setNewCount] = useState(0);
   // 只记 clientMsgId，渲染时从最新列表取：打开着菜单时消息被删除，这里不能留着一份原文（F-UI-42）。
   const [retryId, setRetryId] = useState<string | null>(null);
-  const [menuAt, setMenuAt] = useState<{ id: string; top: number; below: boolean } | null>(null);
+  const [menuAt, setMenuAt] = useState<{ id: string; top: number; below: boolean; left?: number } | null>(null);
+  useEscape(menuAt !== null, () => setMenuAt(null));
   const liveMessage = (id: string | undefined) => {
     const m = id === undefined ? undefined : messages.find((x) => x.clientMsgId === id);
     return m && !m.deleted ? m : null;
@@ -191,6 +194,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           </span>
         }
         back="/chats"
+        primary
         right={
           <button
             className="tt-icon-btn"
@@ -231,7 +235,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
               {formatTime(r.ts)}
             </div>
           ) : r.m.deleted ? (
-            <div className="tt-tip" key={r.m.clientMsgId} data-testid="msg-deleted">
+            <div className="tt-tip" key={r.m.clientMsgId} data-testid="msg-deleted" onContextMenu={noBrowserMenu}>
               {MESSAGE_DELETED}
             </div>
           ) : r.m.type === 'tip' ? (
@@ -244,7 +248,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 showName={type === 'group' && r.m.from !== self}
                 userState={userState}
                 onRetry={() => setRetryId(r.m.clientMsgId)}
-                onMenu={(top, below) => setMenuAt({ id: r.m.clientMsgId, top, below })}
+                onMenu={(top, below, left) => setMenuAt({ id: r.m.clientMsgId, top, below, left })}
               />
               {tipFor.get(r.m.clientMsgId) !== undefined && (
                 <div className="tt-permission-tip" data-testid="permission-tip">
@@ -301,6 +305,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         </div>
       ) : (
         <Composer
+          convId={convId}
           onSend={(text) => {
             const r = c.send(convId, text);
             if (r.ok) {
@@ -328,7 +333,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           <div
             className="tt-menu tt-bubble-menu"
             role="menu"
-            style={{ top: menu.top }}
+            style={{ top: menu.top, left: menu.left }}
             data-below={menu.below || undefined}
             onClick={(e) => e.stopPropagation()}
             data-testid="bubble-menu"
@@ -354,6 +359,18 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 }}
               >
                 重发
+              </button>
+            )}
+            {menu.m.status === 'failed' && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  c.removeFailed(convId, menu.m.clientMsgId); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
+                  setMenuAt(null);
+                }}
+                data-testid="menu-delete"
+              >
+                删除
               </button>
             )}
           </div>
@@ -398,7 +415,11 @@ function permissionTips(ms: Message[], tips: ReadonlyMap<string, number> | undef
 
 const LONG_PRESS_MS = 500;
 const MOVE_CANCEL_PX = 10;
-const MENU_HEIGHT = 96;
+const MENU_ITEM_HEIGHT = 44;
+const MENU_PADDING = 10; // 上下内边距 + 边框
+const MENU_HALF_WIDTH = 70;
+/** 没有菜单项的消息（提示消息、已删除）也不出现浏览器菜单（F-UI-09 规则 5）。 */
+const noBrowserMenu = (e: MouseEvent) => e.preventDefault();
 
 /** 消息气泡（F-UI-07、F-UI-08）。长按 500ms（移动超过 10px 取消）或右键打开菜单（F-UI-09）。 */
 /** 群提示消息（PRD-ui F-UI-40）：居中小字，没有头像、气泡和菜单；文案用本地显示名渲染。 */
@@ -410,13 +431,19 @@ function TipRow({ m, convId }: { m: Message; convId: string }) {
   const text = tip ? tipText(tip, self, (u) => c.displayName(u)) : '[群通知]';
   if (tip?.kind === 'noticeUpdated') {
     return (
-      <Link className="tt-tip tt-tip-link" to={noticePath(convId)} data-testid="tip" data-kind={tip.kind}>
+      <Link
+        className="tt-tip tt-tip-link"
+        to={noticePath(convId)}
+        data-testid="tip"
+        data-kind={tip.kind}
+        onContextMenu={noBrowserMenu}
+      >
         {text}
       </Link>
     );
   }
   return (
-    <div className="tt-tip" data-testid="tip" data-kind={tip?.kind}>
+    <div className="tt-tip" data-testid="tip" data-kind={tip?.kind} onContextMenu={noBrowserMenu}>
       {text}
     </div>
   );
@@ -435,7 +462,7 @@ function Bubble({
   showName: boolean;
   userState: UserRouteState;
   onRetry: () => void;
-  onMenu: (top: number, below: boolean) => void;
+  onMenu: (top: number, below: boolean, left?: number) => void;
 }) {
   const press = useRef<{ x: number; y: number; t: ReturnType<typeof setTimeout> } | null>(null);
   const navigate = useNavigate();
@@ -446,8 +473,15 @@ function Bubble({
   const open = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     const list = el.closest('.tt-messages')?.getBoundingClientRect();
-    const below = !!list && r.top - list.top < MENU_HEIGHT;
-    onMenu(below ? r.bottom + 4 : r.top - MENU_HEIGHT - 4, below);
+    const items = (supported ? 1 : 0) + (m.status === 'failed' ? 2 : 0);
+    const height = items * MENU_ITEM_HEIGHT + MENU_PADDING;
+    const below = !!list && r.top - list.top < height + 4;
+    const top = below ? Math.min(r.bottom + 4, window.innerHeight - height - 4) : r.top - height - 4;
+    // 窄屏容器不宽，菜单水平居中；宽屏跟着气泡（transform 让 left 指菜单中心）。
+    const left = isWide()
+      ? Math.min(Math.max(r.left + r.width / 2, MENU_HALF_WIDTH), window.innerWidth - MENU_HALF_WIDTH)
+      : undefined;
+    onMenu(top, below, left);
   };
   const cancel = () => {
     if (press.current) clearTimeout(press.current.t);
@@ -492,7 +526,7 @@ function Bubble({
           <div
             className={`tt-bubble${supported ? '' : ' tt-bubble-unsupported'}`}
             onPointerDown={(e) => {
-              if (!hasMenu) return;
+              if (!hasMenu || isWide()) return; // 宽屏用右键（F-UI-09 规则 1），按住鼠标是选择文字
               const el = e.currentTarget;
               press.current = { x: e.clientX, y: e.clientY, t: setTimeout(() => open(el), LONG_PRESS_MS) };
             }}

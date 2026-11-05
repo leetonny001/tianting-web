@@ -1,12 +1,12 @@
 import type { Conversation } from '@tianting/sdk';
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
 import { ConnBanner } from '../components/ConnBanner';
 import { Icon } from '../components/Icon';
 import { badgeText, TabBar } from '../components/TabBar';
 import { TopBar } from '../components/TopBar';
-import { useSelf } from '../im/ImProvider';
+import { useIm, useSelf } from '../im/ImProvider';
 import {
   useConversations,
   useConversationsLoaded,
@@ -16,6 +16,7 @@ import {
   useProfile,
 } from '../im/hooks';
 import { MESSAGE_DELETED } from '../lib/errors';
+import { useEscape } from '../lib/focus';
 import { chatPath } from '../lib/routes';
 import { formatTime } from '../lib/time';
 import { StartChatDialog } from './StartChatDialog';
@@ -23,8 +24,8 @@ import { StartChatDialog } from './StartChatDialog';
 // 返回会话列表时恢复滚动位置（AC-UI-01-5）。只在本页生命周期之外保存一个数字，不存任何会话内容。
 let savedScrollTop = 0;
 
-/** 会话列表（PRD-ui F-UI-04）。 */
-export function ChatsPage() {
+/** 会话列表（PRD-ui F-UI-04）。宽屏在列表栏，activeConvId 是主区打开的会话（高亮，规则 8）。 */
+export function ChatsPage({ activeConvId }: { activeConvId?: string }) {
   const convs = useConversations();
   const loaded = useConversationsLoaded();
   const truncated = useConversationsTruncated();
@@ -34,6 +35,10 @@ export function ChatsPage() {
   const remarks = useMemo(() => new Map(friends.filter((f) => f.remark).map((f) => [f.userId, f.remark])), [friends]);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState(false);
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const { drafts: draftStore } = useIm();
+  const drafts = useSyncExternalStore(draftStore.subscribe, draftStore.snapshot);
+  useEscape(menu, () => setMenu(false));
   const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -62,6 +67,7 @@ export function ChatsPage() {
           <button
             className="tt-icon-btn"
             aria-label="更多操作"
+            ref={plusRef}
             onClick={() => setMenu((v) => !v)}
             data-testid="plus-button"
           >
@@ -78,7 +84,7 @@ export function ChatsPage() {
             data-testid="plus-menu"
           >
             <button role="menuitem" onClick={() => navigate('/groups/new')} data-testid="plus-new-group">
-              <Icon name="contacts" size={20} />
+              <Icon name="users" size={20} />
               发起群聊
             </button>
             <button role="menuitem" onClick={() => navigate('/contacts/add')}>
@@ -117,6 +123,8 @@ export function ChatsPage() {
                 key={c.convId}
                 conv={c}
                 remark={c.type === 'c2c' ? remarks.get(peerOf(c.convId, self)) : undefined}
+                draft={drafts.get(c.convId)}
+                selected={c.convId === activeConvId}
               />
             ))}
             {truncated && (
@@ -128,7 +136,7 @@ export function ChatsPage() {
         )}
       </div>
       <TabBar onReselectChats={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} />
-      {dialog && <StartChatDialog onClose={() => setDialog(false)} />}
+      {dialog && <StartChatDialog onClose={() => setDialog(false)} returnFocus={plusRef} />}
     </div>
   );
 }
@@ -166,7 +174,17 @@ function PeerOfficial({ id }: { id: string }) {
   return useProfile(id)?.official ? <OfficialTag /> : null;
 }
 
-const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; remark?: string }) {
+const ConvItem = memo(function ConvItem({
+  conv,
+  remark,
+  draft,
+  selected,
+}: {
+  conv: Conversation;
+  remark?: string;
+  draft?: string;
+  selected: boolean;
+}) {
   const self = useSelf();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -178,7 +196,13 @@ const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; 
   const name = remark || conv.name;
   const from = conv.lastMsg?.from;
   return (
-    <Link className="tt-conv" to={chatPath(conv.convId)} data-testid="conv-item" data-conv-id={conv.convId}>
+    <Link
+      className={`tt-conv${selected ? ' tt-conv-selected' : ''}`}
+      to={chatPath(conv.convId)}
+      aria-current={selected ? 'page' : undefined}
+      data-testid="conv-item"
+      data-conv-id={conv.convId}
+    >
       <span className="tt-conv-avatar">
         <Avatar id={group ? id : peerOf(conv.convId, self)} name={name} size={48} group={group} />
         {conv.unread > 0 && (
@@ -194,10 +218,21 @@ const ConvItem = memo(function ConvItem({ conv, remark }: { conv: Conversation; 
           {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
         </span>
         <span className="tt-conv-summary">
-          {group && from && from !== self && conv.lastMsg?.type !== 'tip' && !conv.lastMsg?.deleted && (
-            <SenderPrefix userId={from} />
+          {draft !== undefined ? (
+            <>
+              <span className="tt-draft-tag" data-testid="draft-tag">
+                [草稿]
+              </span>{' '}
+              {draft}
+            </>
+          ) : (
+            <>
+              {group && from && from !== self && conv.lastMsg?.type !== 'tip' && !conv.lastMsg?.deleted && (
+                <SenderPrefix userId={from} />
+              )}
+              {summaryText(conv)}
+            </>
           )}
-          {summaryText(conv)}
         </span>
       </span>
     </Link>

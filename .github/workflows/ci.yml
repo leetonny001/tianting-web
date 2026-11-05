@@ -68,6 +68,7 @@ jobs:
           node scripts/check-bundle.mjs
           node scripts/check-brand.mjs dist
           node scripts/check-dist.mjs
+          node scripts/check-assets.mjs
       - name: 端到端测试（真实 im-server）
         if: env.HAS_KEYS == 'true'
         working-directory: tianting-web

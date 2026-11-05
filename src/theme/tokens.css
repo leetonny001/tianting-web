@@ -1,5 +1,6 @@
 /* 由 scripts/gen-tokens.mjs 从 tokens.json 生成，不要手改。 */
 :root {
+  color-scheme: light;
   --tt-color-brand: #4C5FD5;
   --tt-color-brand-fill: #4C5FD5;
   --tt-color-brand-fill-pressed: #3D4DB8;
@@ -53,5 +54,37 @@
   --tt-size-conv-item: 72px;
   --tt-size-banner: 36px;
   --tt-size-container: 480px;
+  --tt-size-rail: 64px;
+  --tt-size-list-column: 280px;
+  --tt-size-panel: 360px;
+  --tt-size-dialog-wide: 400px;
+  --tt-size-composer-wide: 120px;
   --tt-size-touch-min: 44px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --tt-color-brand: #8C9BFF;
+  --tt-color-brand-fill: #4C5FD5;
+  --tt-color-brand-fill-pressed: #3D4DB8;
+  --tt-color-on-brand: #FFFFFF;
+  --tt-color-bg: #111318;
+  --tt-color-surface: #1B1E25;
+  --tt-color-surface-selected: #2A2F45;
+  --tt-color-chat-bg: #0D0F13;
+  --tt-color-bubble-self-bg: #4352C4;
+  --tt-color-bubble-self-text: #FFFFFF;
+  --tt-color-bubble-other-bg: #252932;
+  --tt-color-bubble-other-text: #E8EAF0;
+  --tt-color-text-primary: #E8EAF0;
+  --tt-color-text-secondary: #A3A9B7;
+  --tt-color-text-tertiary: #9298A8;
+  --tt-color-divider: #2C313B;
+  --tt-color-border-input: #737A8A;
+  --tt-color-danger: #F2685D;
+  --tt-color-badge-bg: #D92D20;
+  --tt-color-on-badge: #FFFFFF;
+  --tt-color-warning-bg: #3A2A12;
+  --tt-color-warning-text: #FFC870;
+  --tt-color-scrim: #00000099;
 }

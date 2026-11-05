@@ -24,11 +24,17 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/lib/uiPrefs.ts'],
+    files: ['src/lib/uiPrefs.ts', 'e2e/**/*.ts'],
+    rules: { 'no-restricted-globals': 'off' },
+  },
+  {
+    // 首帧前的同源脚本（F-UI-22 规则 4）：不经过打包，只读 ui.theme。
+    files: ['public/theme-init.js'],
+    languageOptions: { globals: { localStorage: 'readonly', window: 'readonly', document: 'readonly' } },
     rules: { 'no-restricted-globals': 'off' },
   },
   {
     files: ['scripts/**/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly' } },
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly' } },
   },
 );

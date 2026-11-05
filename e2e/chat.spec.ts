@@ -81,7 +81,9 @@ test('登录回跳：恶意地址回到 /chats；合法地址回到原页面（A
   await expect(good.getByTestId('composer-input')).toBeVisible();
 });
 
-test('布局：320 宽没有横向滚动；桌面 1280 宽容器 480 居中（AC-UI-02-5、AC-UI-02-6）', async ({ browser }) => {
+test('布局：320 宽没有横向滚动；触屏平板 768×1024（hover: none）容器 480 居中（AC-UI-02-5、AC-UI-02-6 的 M4 视口）', async ({
+  browser,
+}) => {
   const a = uid('alice');
   const page = await loginAs(browser, a);
   await page.setViewportSize({ width: 320, height: 568 });
@@ -89,9 +91,14 @@ test('布局：320 宽没有横向滚动；桌面 1280 宽容器 480 居中（AC
     await page.goto(path);
     expect(await page.evaluate(() => document.documentElement.scrollWidth), path).toBeLessThanOrEqual(320);
   }
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/chats');
+  expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
   const box = (await page.getByTestId('app').boundingBox())!;
   expect(Math.abs(box.width - 480)).toBeLessThanOrEqual(1);
-  expect(Math.abs(box.x - 400)).toBeLessThanOrEqual(1);
+  expect(Math.abs(box.x - 144)).toBeLessThanOrEqual(1);
+  const tabs = (await page.getByRole('navigation', { name: '主导航' }).boundingBox())!;
+  expect(Math.abs(tabs.width - box.width)).toBeLessThanOrEqual(2); // 容器左右各 1px 边线
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(242, 243, 247)');
+  await expect(page.getByTestId('nav-rail')).toHaveCount(0);
 });

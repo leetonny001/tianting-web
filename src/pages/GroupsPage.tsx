@@ -29,7 +29,7 @@ export function GroupsPage() {
   }, [groups]);
   return (
     <div className="tt-page">
-      <TopBar title="群聊" back="/contacts" />
+      <TopBar title="群聊" back="/contacts" primary />
       <div className="tt-scroll" data-testid="groups">
         {failed ? (
           <button

@@ -19,6 +19,7 @@ export const ROUTE_PATTERNS = [
   '/me/settings',
   '/me/settings/blocks',
   '/me/settings/privacy',
+  '/me/settings/appearance',
 ] as const;
 
 function matches(pattern: string, path: string): boolean {

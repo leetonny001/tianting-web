@@ -2,6 +2,7 @@ import { parseConvIdStrict } from '@tianting/sdk';
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
+import { useInPanel } from '../components/SidePanel';
 import { TopBar } from '../components/TopBar';
 import { useClient, useSelf } from '../im/ImProvider';
 import { useConversations, useFriends, useProfile, useSnapshot } from '../im/hooks';
@@ -21,8 +22,11 @@ export function ChatInfoPage() {
   const snapshot = useSnapshot(convId);
   const navigate = useNavigate();
   useFriends(); // 备注变化时刷新显示名
-  // 在聊天信息页期间不是"当前会话"，新消息照常计未读（AC-UI-06-7）。
-  useEffect(() => c.setActiveConversation(null), [c]);
+  // 窄屏在聊天信息页期间不是"当前会话"，新消息照常计未读（AC-UI-06-7）；宽屏侧板后面聊天页还在，不改变（F-UI-06 规则 8）。
+  const inPanel = useInPanel();
+  useEffect(() => {
+    if (!inPanel) c.setActiveConversation(null);
+  }, [c, inPanel]);
   const [gone, setGone] = useState(false);
   const onGone = useCallback(() => setGone(true), []);
   let parsed;

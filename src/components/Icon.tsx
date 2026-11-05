@@ -9,7 +9,10 @@ import {
   Ellipsis,
   LoaderCircle,
   MessageSquareText,
+  Settings,
+  Smile,
   UserPlus,
+  Users,
   type LucideProps,
 } from 'lucide-react';
 
@@ -24,6 +27,9 @@ const icons = {
   more: Ellipsis,
   failed: CircleAlert,
   loading: LoaderCircle,
+  smile: Smile,
+  settings: Settings,
+  users: Users,
 } as const;
 
 export type IconName = keyof typeof icons;

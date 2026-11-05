@@ -56,7 +56,7 @@ export function RequestsPage() {
 
   return (
     <div className="tt-page">
-      <TopBar title="新的朋友" back="/contacts" />
+      <TopBar title="新的朋友" back="/contacts" primary />
       <div className="tt-scroll" data-testid="requests">
         {items.length === 0 ? (
           <div className="tt-empty" data-testid="requests-empty">

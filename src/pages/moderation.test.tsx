@@ -127,7 +127,7 @@ describe('消息被删除（AC-ADM-31-1、AC-ADM-31-3、AC-ADM-31-5、AC-UI-42-4
     await settle();
     const row = screen.getByTestId('msg-deleted');
     fireEvent.pointerDown(row);
-    fireEvent.contextMenu(row);
+    expect(fireEvent.contextMenu(row)).toBe(false); // false = preventDefault：也不出现浏览器菜单（F-UI-09 规则 5）
     await act(async () => new Promise((r) => setTimeout(r, 600)));
     expect(screen.queryByTestId('bubble-menu')).not.toBeInTheDocument();
   });
@@ -288,6 +288,31 @@ describe('禁言条（AC-ADM-40-4、40-5、40-6、41-6、AC-UI-41-2～5）', () 
     await act(async () => clock.advance(1_000));
     await settle();
     expect(screen.getByTestId('composer-input')).toBeInTheDocument();
+  });
+
+  it('到期恢复后 send 仍返回 4031：禁用条重新显示（TC-UI-41-05、F-UI-41 规则 4）', async () => {
+    const clock = new FakeClock(Date.now());
+    const { c } = await renderLoggedIn(at(AB), { convs, clock });
+    const until = clock.now() + 5_000;
+    await act(async () => c.receive(event({ type: 'muted', scope: 'user', mutedUntil: until })));
+    await settle();
+    expect(screen.getByTestId('composer-disabled')).toBeInTheDocument();
+    await act(async () => clock.advance(6_000));
+    await settle();
+    const input = screen.getByTestId('composer-input');
+    fireEvent.change(input, { target: { value: '再试试' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const later = clock.now() + 60_000;
+    await act(async () =>
+      c.receive({
+        id: c.last('send').id,
+        cmd: 'ack',
+        error: { code: 4031, msg: 'm', details: { scope: 'user', mutedUntil: later } },
+      }),
+    );
+    await settle();
+    expect(screen.getByTestId('composer-disabled')).toBeInTheDocument();
+    expect(screen.queryByTestId('composer-input')).not.toBeInTheDocument();
   });
 
   it('格式化函数：年份、补零', () => {

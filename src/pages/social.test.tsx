@@ -571,12 +571,13 @@ describe('备注、黑名单、隐私（F-UI-28～30）', () => {
     expect(screen.getAllByTestId('block-row')).toHaveLength(1);
   });
 
-  it('设置页依次出现隐私、黑名单（带人数）、关于、退出（AC-UI-16-6、29-1）', async () => {
+  it('设置页依次出现隐私、黑名单（带人数）、外观、关于、退出（AC-UI-16-6 的 M4 顺序、29-1）', async () => {
     await open('/me/settings', { blocks: [block('a'), block('b')] });
     expect(screen.getByTestId('settings-blocks')).toHaveTextContent('2');
     const text = document.body.textContent ?? '';
     expect(text.indexOf('隐私')).toBeLessThan(text.indexOf('黑名单'));
-    expect(text.indexOf('黑名单')).toBeLessThan(text.indexOf('关于'));
+    expect(text.indexOf('黑名单')).toBeLessThan(text.indexOf('外观'));
+    expect(text.indexOf('外观')).toBeLessThan(text.indexOf('关于'));
     expect(text.indexOf('关于')).toBeLessThan(text.indexOf('退出登录'));
   });
 

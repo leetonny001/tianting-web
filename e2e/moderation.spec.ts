@@ -74,7 +74,7 @@ test('/demo/login 返回 4034（page.route）：显示同一文案（AC-UI-43-2�
   await expect(page.getByTestId('login-error')).toHaveText('账号已被封禁');
 });
 
-test('删除群消息：在线端都显示占位，DOM 和 SDK 导出搜不到特征串；摘要占位、未读不变；离线成员也一样（AC-ADM-31-1、31-3、31-5）', async ({
+test('删除群消息：在线端都显示占位，DOM 和 SDK 导出搜不到特征串；摘要占位、未读不变；离线成员也一样（AC-ADM-31-1、31-3、31-5、AC-UI-42-1、42-2、42-3）', async ({
   browser,
 }) => {
   const [s, b, m, off] = [uid('s'), uid('b'), uid('m'), uid('off')];
@@ -128,7 +128,9 @@ test('删除群消息：在线端都显示占位，DOM 和 SDK 导出搜不到�
   await expect(item.locator('.tt-conv-summary')).toContainText('fresh');
 });
 
-test('用户级禁言：单聊和群聊都显示禁言条；解除后输入框恢复、发送成功（AC-ADM-40-4、40-5）', async ({ browser }) => {
+test('用户级禁言：单聊和群聊都显示禁言条；解除后输入框恢复、发送成功（AC-ADM-40-4、40-5、AC-UI-41-1、41-3）', async ({
+  browser,
+}) => {
   const [u, p] = [uid('u'), uid('p')];
   const { convId } = await group('禁言群', u, p);
   const page = await loginAs(browser, u, chat(convId));

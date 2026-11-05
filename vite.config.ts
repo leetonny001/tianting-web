@@ -42,6 +42,8 @@ export default defineConfig({
     },
   },
   preview: {
+    // 与 deploy/nginx.conf 一致的响应头（AC-UI-22-2、AC-UI-90-13）：e2e 按生产方式验证。
+    headers: { 'Content-Security-Policy': `${CSP}; frame-ancestors 'none'` },
     proxy: {
       '/demo/login': { target: server, changeOrigin: false },
       '/ws': { target: server.replace(/^http/, 'ws'), ws: true },

@@ -2,11 +2,11 @@
 
 天听 H5 客户端（React + Vite），基于 [@tianting/sdk](https://github.com/leetonny001/tianting-sdk-ts)。信息架构参考常见 IM（消息 / 通讯录 / 我），视觉使用天听自有品牌（靛蓝 `#4C5FD5`）。需求：tianting-server 的 `docs/prd/PRD-ui-v1.0.md`、`PRD-core-v1.3.md`，任务单 `docs/tasks/frontend.md`、`frontend-ui.md`。
 
-## 现状（M3 第一批）
+## 现状（M4 Web）
 
-- 已有：演示登录（可填昵称）、路由守卫与回跳校验、底部导航与总未读角标 / 标题、会话列表（骨架屏、空状态、摘要、未读、截断提示）、"+"菜单与发起单聊（含给自己发消息）、聊天页（单聊 / 群聊、"群名（N）"、时间分隔、历史翻页、自动滚动与"↓ N 条新消息"、发送状态与失败重发、长按 / 右键菜单、超长提示、输入法组字）、被移出 / 解散 / 打开不在列表里的会话、连接状态条、被踢弹窗、轻提示与错误文案、聊天信息页、"我"与设置、演示面板（`?demo=1`）。
-- 质量：37 个组件测试；11 个端到端测试（真实 im-server），含 axe 可访问性扫描、500 个会话的渲染性能（CPU 4 倍降速中位数约 370ms，上限 500ms）、生产构建 CSP 无违规。
-- 待做：通讯录、好友、新的朋友、黑名单、隐私（依赖服务端社交功能 PRD-social）；群里发送者的昵称 / 头像（`users` 命令，依赖社交可见范围）；宽屏三栏、深色、表情、草稿（M4）。
+- 已有：M3 全部页面和社交页面；群管理（发起群聊、群设置、公告、成员、邀请、提示消息）；封禁、消息删除、禁言提示；宽屏三栏（`src/lib/layout.ts`，跨过宽屏条件时不改路由、不重连、输入框实例不变）、右侧侧板、键盘操作与焦点陷阱（`src/lib/focus.ts`）；深色模式与外观设置（首帧前由同源 `public/theme-init.js` 设置 `data-theme`，CSP 不放宽）；系统 emoji 面板；草稿（只在内存，`src/im/drafts.ts`）；右键菜单与删除失败消息。
+- 质量：组件测试（Vitest + FakeTransport）；端到端测试（真实 im-server，默认手机视口，`e2e/wide.spec.ts` 用宽屏上下文），含 axe 浅色 / 深色扫描、500 个会话渲染性能、生产构建 CSP 响应头。
+- 待做：系统通知（等 `push` 协议）、全群禁言提示（P1）、PC 客户端（tianting-desktop）。
 
 ## 开发
 
@@ -20,7 +20,7 @@ npm test               # 单元 / 组件测试（Vitest + Testing Library，SDK 
 npm run e2e            # 端到端：自动启动测试模式的 im-server 和 Vite，用本机 Chrome 跑（需要 Go）
 npm run lint && npm run typecheck && npm run format:check
 npm run check          # token 生成文件、对比度 / 色相、颜色字面量、品牌词
-npm run build && node scripts/check-bundle.mjs && node scripts/check-dist.mjs   # 首屏 JS ≤ 200KB；CSP、无管理密钥字符串、无 source map
+npm run build && node scripts/check-bundle.mjs && node scripts/check-dist.mjs && node scripts/check-assets.mjs   # 首屏 JS ≤ 200KB；CSP、theme-init、无管理密钥字符串、无 source map；无大位图、svg 在图标清单内
 ```
 
 本地启动服务端（另一个终端）：`cd ../im-mvp/server && IM_TEST_MODE=1 IM_DEMO_LOGIN=1 IM_ALLOWED_ORIGINS=http://localhost:5173 go run ./cmd/im-server`。

@@ -1,7 +1,9 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { isTopLayer, useFocusTrap } from '../lib/focus';
 
 /**
- * 居中弹窗（PRD-ui 3.3 节：宽 = 容器宽 − 48）。dismissible=false 时点遮罩、Esc 都不能关闭（被踢弹窗，F-UI-18）。
+ * 居中弹窗（PRD-ui 3.3 节：窄屏宽 = 容器宽 − 48，宽屏 400）。dismissible=false 时点遮罩、Esc 都不能关闭（被踢弹窗，F-UI-18）。
+ * 打开时焦点移进来并留在里面，关闭时还给触发按钮（FE-301）；触发按钮会消失时用 returnFocus 指定。
  */
 export function Dialog({
   title,
@@ -11,6 +13,7 @@ export function Dialog({
   dismissible = true,
   sheet = false,
   testId,
+  returnFocus,
 }: {
   title?: ReactNode;
   children?: ReactNode;
@@ -20,12 +23,13 @@ export function Dialog({
   /** 底部菜单样式（申请详情，F-UI-25 规则 4）。 */
   sheet?: boolean;
   testId?: string;
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, { fallback: () => returnFocus?.current });
   useEffect(() => {
-    ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) onDismiss?.();
+      if (e.key === 'Escape' && dismissible && isTopLayer(ref.current)) onDismiss?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

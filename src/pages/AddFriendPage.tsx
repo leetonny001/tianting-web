@@ -48,7 +48,7 @@ export function AddFriendPage() {
 
   return (
     <div className="tt-page">
-      <TopBar title="添加朋友" back="/contacts" />
+      <TopBar title="添加朋友" back="/contacts" primary />
       <div className="tt-scroll">
         <form className="tt-search" onSubmit={(e) => void submit(e)}>
           <input

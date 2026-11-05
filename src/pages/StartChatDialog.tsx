@@ -1,5 +1,5 @@
 import { c2cConvId } from '@tianting/sdk';
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 import { useNavigate } from 'react-router';
 import { Dialog } from '../components/Dialog';
 import { useSelf } from '../im/ImProvider';
@@ -9,7 +9,14 @@ import { chatPath } from '../lib/routes';
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** 发起单聊（PRD-ui F-UI-05、F-CONV-03）：临时会话只在本地，发出第一条成功后才进入会话列表。 */
-export function StartChatDialog({ onClose }: { onClose: () => void }) {
+export function StartChatDialog({
+  onClose,
+  returnFocus,
+}: {
+  onClose: () => void;
+  /** 从"+"菜单打开时菜单已经关了，焦点回到"+"按钮（AC-UI-05-4）。 */
+  returnFocus?: RefObject<HTMLElement | null>;
+}) {
   const self = useSelf();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
@@ -31,6 +38,7 @@ export function StartChatDialog({ onClose }: { onClose: () => void }) {
       title="发起单聊"
       testId="start-chat-dialog"
       onDismiss={onClose}
+      returnFocus={returnFocus}
       actions={
         <>
           <button className="tt-btn" onClick={onClose}>
