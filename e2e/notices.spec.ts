@@ -4,6 +4,20 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 import { randomUUID } from 'node:crypto';
 import { admin, loginAs, signed, uid, WIDE } from './helpers';
 
+// 这里开的上下文用完就关：页面留着会一直占 CPU（连接、定时器），拖慢后面 social.spec.ts 的性能用例（AC-SOC-06-14）。
+let openBefore = new Set<BrowserContext>();
+test.beforeEach(({ browser }) => {
+  openBefore = new Set(browser.contexts());
+});
+test.afterEach(async ({ browser }) => {
+  await Promise.all(
+    browser
+      .contexts()
+      .filter((c) => !openBefore.has(c))
+      .map((c) => c.close()),
+  );
+});
+
 const keyOf = (u: string) => `ui.noticeSeen.${u}`;
 const seen = (p: Page, u: string) => p.evaluate((k) => localStorage.getItem(k), keyOf(u));
 
