@@ -15,7 +15,8 @@ import {
   type UserProfile,
 } from '@tianting/sdk';
 import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
-import { useClient } from './ImProvider';
+import { useClient, useIm } from './ImProvider';
+import type { NoticeSnapshot } from './notices';
 
 type Listener = () => void;
 
@@ -333,6 +334,15 @@ export function useGroupMembers(groupId: string) {
   }, [connected, reload]);
   useEffect(() => c.on('groupChanged', (g) => void (g === groupId && reload())), [c, groupId, reload]);
   return { members, loaded, hasMore, loadMore, reload };
+}
+
+const NO_NOTICES: NoticeSnapshot = { list: [], unseen: 0, banner: null };
+const noNoticesSubscribe = () => () => {};
+
+/** 系统通知的列表、未查看条数和横幅（F-UI-44）。 */
+export function useNotices(): NoticeSnapshot {
+  const { notices } = useIm();
+  return useSyncExternalStore(notices?.subscribe ?? noNoticesSubscribe, notices?.getSnapshot ?? (() => NO_NOTICES));
 }
 
 /** 显示名：好友备注 → 昵称 → userId。 */

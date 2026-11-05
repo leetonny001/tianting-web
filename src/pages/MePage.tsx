@@ -4,7 +4,7 @@ import { TabBar } from '../components/TabBar';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { useSelf } from '../im/ImProvider';
-import { useOfficial, useProfile } from '../im/hooks';
+import { useNotices, useOfficial, useProfile } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 
 /** 我（PRD-ui F-UI-15）：一期不提供资料编辑。显示名来自 users 缓存里的自己。 */
@@ -13,6 +13,7 @@ export function MePage() {
   const toast = useToast();
   const profile = useProfile(userId);
   const official = useOfficial();
+  const { unseen } = useNotices();
   const name = profile?.nickname || userId;
   return (
     <div className="tt-page">
@@ -37,6 +38,14 @@ export function MePage() {
         </div>
         <Link className="tt-row" to="/me/settings" data-testid="me-settings">
           设置
+        </Link>
+        <Link className="tt-row tt-row-between" to="/me/notices" data-testid="me-notices">
+          <span>系统通知</span>
+          {unseen > 0 && (
+            <span className="tt-count-badge" data-testid="me-notices-count">
+              {unseen}
+            </span>
+          )}
         </Link>
       </div>
       <TabBar />

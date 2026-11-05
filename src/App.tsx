@@ -14,6 +14,7 @@ import { ConnBanner } from './components/ConnBanner';
 import { DemoPanel } from './components/DemoPanel';
 import { Dialog } from './components/Dialog';
 import { SidePanel } from './components/SidePanel';
+import { NoticeBanner } from './components/NoticeBanner';
 import { NavRail } from './components/TabBar';
 import { ToastProvider, useToast } from './components/Toast';
 import { WideEmpty } from './components/WideEmpty';
@@ -39,6 +40,7 @@ import { GroupNoticePage } from './pages/GroupNoticePage';
 import { GroupsPage } from './pages/GroupsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MePage } from './pages/MePage';
+import { NoticesPage } from './pages/NoticesPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { RemarkPage } from './pages/RemarkPage';
 import { RequestsPage } from './pages/RequestsPage';
@@ -106,6 +108,7 @@ export function AppRoutes() {
             </main>
           </div>
         </div>
+        {session && <NoticeBanner />}
       </div>
       {session && <SessionEffects />}
       {session && demo && <DemoPanel />}
@@ -157,6 +160,7 @@ function Pages({ location, wide }: { location: Partial<Location> | Location; wid
           ['/contacts/apply/:userId', <ApplyPage />],
           ['/user/:userId', <UserPage />],
           ['/user/:userId/remark', <RemarkPage />],
+          ['/me/notices', <NoticesPage />],
           ['/me/settings/blocks', <BlocksPage />],
           ['/me/settings/privacy', <PrivacyPage />],
           ['/me/settings/appearance', <AppearancePage />],
@@ -254,7 +258,7 @@ function SessionEffects() {
         <button
           className="tt-btn tt-btn-primary"
           onClick={() => {
-            logout();
+            logout({ keepNoticeSeen: true });
             navigate('/login', { replace: true });
           }}
         >

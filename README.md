@@ -6,7 +6,8 @@
 
 - 已有：M3 全部页面和社交页面；群管理（发起群聊、群设置、公告、成员、邀请、提示消息）；封禁、消息删除、禁言提示；宽屏三栏（`src/lib/layout.ts`，跨过宽屏条件时不改路由、不重连、输入框实例不变）、右侧侧板、键盘操作与焦点陷阱（`src/lib/focus.ts`）；深色模式与外观设置（首帧前由同源 `public/theme-init.js` 设置 `data-theme`，CSP 不放宽）；系统 emoji 面板；草稿（只在内存，`src/im/drafts.ts`）；右键菜单与删除失败消息。
 - 质量：组件测试（Vitest + FakeTransport）；端到端测试（真实 im-server，默认手机视口，`e2e/wide.spec.ts` 用宽屏上下文），含 axe 浅色 / 深色扫描、500 个会话渲染性能、生产构建 CSP 响应头。
-- 待做：系统通知（等 `push` 协议）、全群禁言提示（P1）、PC 客户端（tianting-desktop）。
+- 系统通知：横幅、`/me/notices` 列表、"我"页未查看数（`src/im/notices.ts`，PRD-ui F-UI-44、PRD-live F-PUSH-12）。列表只在内存，刷新后靠回放恢复；`localStorage` 只有 `ui.noticeSeen.{userId}` 这一个数字，退出登录时删除。
+- 待做：全群禁言提示（P1）、PC 客户端（tianting-desktop）。
 
 ## 开发
 
@@ -23,7 +24,7 @@ npm run check          # token 生成文件、对比度 / 色相、颜色字面�
 npm run build && node scripts/check-bundle.mjs && node scripts/check-dist.mjs && node scripts/check-assets.mjs   # 首屏 JS ≤ 200KB；CSP、theme-init、无管理密钥字符串、无 source map；无大位图、svg 在图标清单内
 ```
 
-本地启动服务端（另一个终端）：`cd ../im-mvp/server && IM_TEST_MODE=1 IM_DEMO_LOGIN=1 IM_ALLOWED_ORIGINS=http://localhost:5173 go run ./cmd/im-server`。
+本地启动服务端（另一个终端）：`cd ../im-mvp/server && IM_TEST_MODE=1 IM_DEMO_LOGIN=1 IM_ALLOWED_ORIGINS=http://localhost:5173 go run ./cmd/im-server`。系统推送默认关闭，要试系统通知加 `IM_PUSH_ENABLED=1`（关闭时 SDK 静默忽略 4001，界面没有通知）。
 
 ## 约定
 

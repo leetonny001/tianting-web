@@ -46,6 +46,7 @@ export default defineConfig({
         IM_TEST_MODE: '1',
         IM_DEMO_LOGIN: '1',
         IM_V13_ADMIN_FEATURES: '1',
+        IM_PUSH_ENABLED: '1',
         IM_QUARANTINE_KEY: QUARANTINE_KEY,
         IM_ADMIN_CALLERS: callers,
         IM_ALLOWED_ORIGINS: `${WEB},http://127.0.0.1:15174`,

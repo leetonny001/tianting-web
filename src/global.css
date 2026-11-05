@@ -598,6 +598,37 @@ a {
   left: 50%;
   transform: translateX(-50%);
 }
+.tt-notice-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+.tt-notice-banner {
+  display: block;
+  width: 100%;
+  min-height: var(--tt-size-touch-min);
+  padding: var(--tt-space-3) var(--tt-space-4);
+  border: 0;
+  background: var(--tt-color-brand-fill);
+  color: var(--tt-color-on-brand);
+  font-size: var(--tt-font-small);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tt-notice-item {
+  padding: var(--tt-space-3) var(--tt-space-4);
+}
+.tt-notice-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tt-notice-time {
+  margin-top: var(--tt-space-1);
+  font-size: var(--tt-font-caption);
+}
 .tt-toast-layer {
   position: absolute;
   left: 0;
