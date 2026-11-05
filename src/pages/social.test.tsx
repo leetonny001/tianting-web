@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -412,6 +412,55 @@ describe('资料卡（F-UI-14）', () => {
     await ackUsers(b.c);
     expect(actions()).toContain('添加到通讯录');
     expect(actions()).not.toContain('发消息');
+  });
+
+  it('好友制发起单聊：非好友先提示，好友直接进入（AC-UI-05-6）', async () => {
+    const startFor = async (id: string) => {
+      fireEvent.click(screen.getByTestId('plus-button'));
+      fireEvent.click(within(screen.getByTestId('plus-menu')).getByText('发起单聊'));
+      await userEvent.type(screen.getByTestId('start-chat-input'), `${id}{Enter}`);
+    };
+    await open('/chats', { mode: 'friends', friends: [friend('bob')] });
+    await startFor('carol');
+    expect(screen.getByTestId('start-chat-warn')).toHaveTextContent('对方不是你的好友，可能无法发送消息');
+    expect(window.location.pathname).toBe('/chats');
+    // 改输入后回到普通状态。
+    await userEvent.type(screen.getByTestId('start-chat-input'), 'x');
+    expect(screen.queryByTestId('start-chat-warn')).not.toBeInTheDocument();
+    expect(screen.getByTestId('start-chat-submit')).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId('start-chat-input'), '{Backspace}{Enter}');
+    fireEvent.click(screen.getByTestId('start-chat-anyway'));
+    expect(decodeURIComponent(window.location.pathname)).toBe('/chat/c2c:alice:carol');
+  });
+
+  it('好友制发起单聊：好友和自己不提示；"添加朋友"去申请页（AC-UI-05-6）', async () => {
+    const startFor = async (id: string) => {
+      fireEvent.click(screen.getByTestId('plus-button'));
+      fireEvent.click(within(screen.getByTestId('plus-menu')).getByText('发起单聊'));
+      await userEvent.type(screen.getByTestId('start-chat-input'), `${id}{Enter}`);
+    };
+    const a = await open('/chats', { mode: 'friends', friends: [friend('bob')] });
+    await startFor('bob');
+    expect(screen.queryByTestId('start-chat-warn')).not.toBeInTheDocument();
+    expect(decodeURIComponent(window.location.pathname)).toBe('/chat/c2c:alice:bob');
+    a.unmount();
+    const b = await open('/chats', { mode: 'friends', friends: [friend('bob')] });
+    await startFor('alice');
+    expect(decodeURIComponent(window.location.pathname)).toBe('/chat/c2c:alice:alice');
+    b.unmount();
+    await open('/chats', { mode: 'friends', friends: [friend('bob')] });
+    await startFor('carol');
+    fireEvent.click(screen.getByTestId('start-chat-apply'));
+    expect(window.location.pathname).toBe('/contacts/apply/carol');
+  });
+
+  it('开放模式发起单聊不提示', async () => {
+    await open('/chats');
+    fireEvent.click(screen.getByTestId('plus-button'));
+    fireEvent.click(within(screen.getByTestId('plus-menu')).getByText('发起单聊'));
+    await userEvent.type(screen.getByTestId('start-chat-input'), 'carol{Enter}');
+    expect(screen.queryByTestId('start-chat-warn')).not.toBeInTheDocument();
+    expect(decodeURIComponent(window.location.pathname)).toBe('/chat/c2c:alice:carol');
   });
 
   it('好友制下 none 的官方账号可以发消息', async () => {
