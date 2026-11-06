@@ -867,8 +867,14 @@ describe('会话（FE-614）', () => {
     expect(text('toast')).toBe('检测到你的账号登录凭证异常');
     await notice('refreshRateLimited');
     expect(text('toast')).toBe('你的账号登录凭证刷新过于频繁');
+    await notice('newIpPrefix');
+    expect(text('toast')).toBe('你的账号正在新的网络使用');
+    await notice('passwordChanged');
+    expect(text('toast')).toBe('你的账号密码已被修改');
+    await notice('passwordRecovered');
+    expect(text('toast')).toBe('你的账号已通过恢复码重设密码');
     await notice('futureKind');
-    expect(text('toast')).toBe('你的账号登录凭证刷新过于频繁');
+    expect(text('toast')).toBe('你的账号已通过恢复码重设密码');
   });
 
   it('TC-ACC-04-09 退出其他设备：密码错原地提示，没有变化；密码对换 sid 重连，无弹窗', async () => {
