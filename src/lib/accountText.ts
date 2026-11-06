@@ -88,5 +88,11 @@ export const accountEventText = (kind: string) => EVENT_TEXT[kind] ?? '账号安
 const PLATFORM_TEXT: Record<string, string> = { android: 'Android', ios: 'iOS', web: '网页', pc: '电脑' };
 export const platformText = (p: string | undefined) => (p ? (PLATFORM_TEXT[p] ?? p) : '');
 
-const SECURITY_NOTICE_TEXT: Record<string, string> = { newDeviceLogin: '你的账号在新设备登录' };
+// 新设备登录的文案来自 PRD（AC-ACC-02-13），其他三个是实现时加的，待确认（问题表）。
+const SECURITY_NOTICE_TEXT: Record<string, string> = {
+  newDeviceLogin: '你的账号在新设备登录',
+  recoveryCodeRegenerated: '你的恢复码已重新生成',
+  refreshReplay: '检测到你的账号登录凭证异常',
+  refreshRateLimited: '你的账号登录凭证刷新过于频繁',
+};
 export const securityNoticeText = (kind: string) => SECURITY_NOTICE_TEXT[kind] ?? null;

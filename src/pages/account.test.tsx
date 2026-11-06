@@ -855,6 +855,22 @@ describe('会话（FE-614）', () => {
     expect(text('security-other-sessions')).toBe('其他 2 个会话，最近活跃 2031-01-02 03:04');
   });
 
+  it('securityNotice 其他 kind：按 kind 提示，不认识的不提示（AC-ACC-03-25、AC-ACC-03-45、F-ACC-05 规则 5）', async () => {
+    const { c } = await signedIn('/me/settings/security');
+    const notice = (kind: string) =>
+      act(async () => c.receive({ cmd: 'event', data: { type: 'securityNotice', kind, at: 1, platform: 'android' } }));
+    await notice('futureKind');
+    expect(screen.queryByTestId('toast')).toBeNull();
+    await notice('recoveryCodeRegenerated');
+    expect(text('toast')).toBe('你的恢复码已重新生成');
+    await notice('refreshReplay');
+    expect(text('toast')).toBe('检测到你的账号登录凭证异常');
+    await notice('refreshRateLimited');
+    expect(text('toast')).toBe('你的账号登录凭证刷新过于频繁');
+    await notice('futureKind');
+    expect(text('toast')).toBe('你的账号登录凭证刷新过于频繁');
+  });
+
   it('TC-ACC-04-09 退出其他设备：密码错原地提示，没有变化；密码对换 sid 重连，无弹窗', async () => {
     const { b, c } = await signedIn('/me/settings/security');
     fireEvent.click(screen.getByTestId('security-logout-others'));
