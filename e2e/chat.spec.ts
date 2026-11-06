@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { admin, loginAs, uid } from './helpers';
+import { admin, c2cId, loginAs, uid } from './helpers';
 
 test('两个用户单聊：发起单聊、发送、对方收到未读并回复（AC-CONV-03-1、AC-MSG-01-1、AC-CONV-02-4）', async ({
   browser,
@@ -101,4 +101,33 @@ test('布局：320 宽没有横向滚动；触屏平板 768×1024（hover: none�
   expect(Math.abs(tabs.width - box.width)).toBeLessThanOrEqual(2); // 容器左右各 1px 边线
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(242, 243, 247)');
   await expect(page.getByTestId('nav-rail')).toHaveCount(0);
+});
+
+test('第一次连上之前按回车：输入框内容保留并提示，页面没有未捕获的错误；连上后能发出去', async ({ browser }) => {
+  const a = uid('alice');
+  const page = await loginAs(browser, a);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  let open = false;
+  await page.routeWebSocket(/\/ws(\?|$)/, (ws) => {
+    if (!open) return ws.close({ code: 1011 }); // 重新加载后还连不上
+    const server = ws.connectToServer();
+    ws.onMessage((m) => server.send(m));
+    server.onMessage((m) => ws.send(m));
+  });
+  await page.goto(`/chat/${encodeURIComponent(c2cId(a, a))}`);
+  const input = page.getByTestId('composer-input');
+  await input.fill('先打的字');
+  await input.press('Enter');
+  await expect(page.getByTestId('toast')).toHaveText('正在连接，请稍后再发送');
+  await expect(input).toHaveValue('先打的字');
+  await expect(page.getByTestId('message')).toHaveCount(0);
+  expect(errors).toEqual([]);
+  open = true;
+  await expect(async () => {
+    await input.press('Enter');
+    await expect(input).toHaveValue('', { timeout: 1000 });
+  }).toPass({ timeout: 25_000 });
+  await expect(page.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
+  await page.context().close();
 });

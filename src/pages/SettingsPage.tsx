@@ -5,10 +5,11 @@ import { TopBar } from '../components/TopBar';
 import { useIm } from '../im/ImProvider';
 import { useBlocks, usePendingCount } from '../im/hooks';
 import { APP_NAME, APP_VERSION, BUILD_ID } from '../lib/config';
+import { PrivacyLink } from './LoginPage';
 
 /** 设置（PRD-ui F-UI-16）。 */
 export function SettingsPage() {
-  const { logout } = useIm();
+  const { logout, session, knownConfig } = useIm();
   const pending = usePendingCount();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
@@ -17,6 +18,11 @@ export function SettingsPage() {
     <div className="tt-page">
       <TopBar title="设置" back="/me" primary />
       <div className="tt-scroll">
+        {session?.mode === 'account' && (
+          <Link className="tt-row" to="/me/settings/security" data-testid="settings-security">
+            账号安全
+          </Link>
+        )}
         <Link className="tt-row" to="/me/settings/privacy" data-testid="settings-privacy">
           隐私
         </Link>
@@ -33,6 +39,11 @@ export function SettingsPage() {
             版本 <span data-testid="app-version">{APP_VERSION}</span>（构建 {BUILD_ID}）
           </div>
           <div className="tt-row-static tt-secondary">图标：Lucide（ISC 许可）</div>
+          {knownConfig?.privacyNotice?.url && (
+            <div className="tt-row-static">
+              <PrivacyLink url={knownConfig.privacyNotice.url} />
+            </div>
+          )}
         </div>
         <button className="tt-row tt-danger-text" onClick={() => setConfirm(true)} data-testid="logout">
           退出登录

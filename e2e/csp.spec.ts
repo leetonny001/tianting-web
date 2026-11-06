@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { uid } from './helpers';
+import { PROD } from './ports';
 
 // 生产构建（vite preview，带 CSP meta）：登录、聊天全流程没有 CSP 违规（FE-246、AC-UI-90-12 的 Web 部分）。
-test.use({ baseURL: 'http://127.0.0.1:15174' });
+test.use({ baseURL: PROD });
 
 test('生产构建：带 CSP，登录和收发消息没有 CSP 违规', async ({ page }) => {
   const violations: string[] = [];

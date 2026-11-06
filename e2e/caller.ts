@@ -7,7 +7,16 @@ export const CALLERS_JSON = JSON.stringify([
     id: CALLER_ID,
     alg: 'hmac-sha256',
     secret: Buffer.from(CALLER_SECRET).toString('base64'),
-    scopes: ['user.ban', 'msg.delete', 'mute.write', 'push.user', 'push.all', 'group.write', 'social.settings'],
+    scopes: [
+      'user.ban',
+      'msg.delete',
+      'mute.write',
+      'push.user',
+      'push.all',
+      'group.write',
+      'social.settings',
+      'account.invite',
+    ],
     // 持有 push.all 必须配 pushTypes，否则 IM_PUSH_ENABLED 开启时启动失败（PRD-live F-PUSH-09 规则 3）。
     pushTypes: ['notice', 'promo'],
   },

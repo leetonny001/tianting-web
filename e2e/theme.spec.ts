@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
+import { PROD } from './ports';
 import { expect, test, type Page } from '@playwright/test';
 import { admin, chatUrl, loginAs, uid } from './helpers';
 
@@ -6,7 +7,6 @@ import { admin, chatUrl, loginAs, uid } from './helpers';
 
 const DARK = 'rgb(17, 19, 24)'; // color.bg #111318
 const LIGHT = 'rgb(242, 243, 247)'; // color.bg #F2F3F7
-const PROD = 'http://127.0.0.1:15174'; // 生产构建，响应头带 CSP
 const bodyBg = (p: Page) => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
 test('跟随系统：深色 #111318，切到浅色 1 秒内变 #F2F3F7，不刷新（AC-UI-22-1）', async ({ page }) => {

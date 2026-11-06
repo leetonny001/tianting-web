@@ -1,4 +1,4 @@
-import { ConvIdError, IMError, parseConvIdStrict, tipText, type Message } from '@tianting/sdk';
+import { ConvIdError, IMError, NotConnectedError, parseConvIdStrict, tipText, type Message } from '@tianting/sdk';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
@@ -314,12 +314,19 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         <Composer
           convId={convId}
           onSend={(text) => {
-            const r = c.send(convId, text);
-            if (r.ok) {
-              atBottom.current = true;
-              return true;
+            try {
+              const r = c.send(convId, text);
+              if (r.ok) {
+                atBottom.current = true;
+                return true;
+              }
+              return false;
+            } catch (e) {
+              // 第一次连接成功之前 SDK 还不知道自己是谁，发不了也排不了队：输入框内容留着，让用户再按一次。
+              if (!(e instanceof NotConnectedError)) throw e;
+              toast('正在连接，请稍后再发送');
+              return false;
             }
-            return false;
           }}
         />
       )}

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
+import { stubFetch } from '../test/harness-fetch';
 import { renderLoggedIn, settle } from '../test/harness';
 
 const AB = 'c2c:alice:bob';
@@ -30,7 +31,7 @@ describe('登录与路由守卫（F-UI-01、F-UI-03）', () => {
     expect(window.location.pathname).toBe('/login');
     expect(new URLSearchParams(window.location.search).get('redirect')).toBe('/chat/c2c%3Aalice%3Abob');
     expect(document.title).toBe('天听');
-    const submit = screen.getByTestId('login-submit');
+    const submit = await screen.findByTestId('login-submit');
     expect(submit).toBeDisabled();
     await userEvent.type(screen.getByTestId('login-username'), '   ');
     expect(submit).toBeDisabled();
@@ -39,10 +40,10 @@ describe('登录与路由守卫（F-UI-01、F-UI-03）', () => {
   });
 
   it('账号格式不合法提示"账号格式不正确"，不发请求（AC-AUTH-04-4）；昵称超过 32 字禁用（AC-UI-03-8）', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const fetchMock = stubFetch(async () => new Response('{}', { status: 500 }));
     window.history.pushState(null, '', '/login');
     render(<App />);
-    await userEvent.type(screen.getByTestId('login-username'), 'bad.name{Enter}');
+    await userEvent.type(await screen.findByTestId('login-username'), 'bad.name{Enter}');
     expect(screen.getByTestId('login-error')).toHaveTextContent('账号格式不正确');
     expect(fetchMock).not.toHaveBeenCalled();
     await userEvent.type(screen.getByTestId('login-nickname'), '字'.repeat(33));
@@ -52,10 +53,10 @@ describe('登录与路由守卫（F-UI-01、F-UI-03）', () => {
 
   it('演示登录 404 提示"登录服务未开启"（AC-UI-03-4）；连续点击只发一次请求（AC-UI-03-3）', async () => {
     let resolve!: (r: Response) => void;
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise((r) => (resolve = r)));
+    const fetchMock = stubFetch(() => new Promise((r) => (resolve = r)));
     window.history.pushState(null, '', '/login');
     render(<App />);
-    await userEvent.type(screen.getByTestId('login-username'), 'alice');
+    await userEvent.type(await screen.findByTestId('login-username'), 'alice');
     const submit = screen.getByTestId('login-submit');
     fireEvent.click(submit);
     fireEvent.click(submit);

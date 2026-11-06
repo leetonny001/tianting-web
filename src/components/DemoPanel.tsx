@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useIm } from '../im/ImProvider';
 import { useConnState, useConversations } from '../im/hooks';
+import { loadSession } from '../lib/session';
 
 /** 演示面板（PRD-core F-DEMO-01）：?demo=1 时浮在视口右下角，显示连接状态、各会话本地 maxSeq，可以"模拟断网"。 */
 export function DemoPanel() {
-  const { client, session } = useIm();
+  const { account, client, session } = useIm();
   const state = useConnState();
   const convs = useConversations();
   const [open, setOpen] = useState(true);
@@ -27,7 +28,8 @@ export function DemoPanel() {
                 setOffline(e.target.checked);
                 // 模拟断网：断开并暂停自动重连；关闭开关时用同一个 token 恢复连接，SDK 补拉断开期间的消息。
                 if (e.target.checked) client?.disconnect();
-                else if (session) client?.connect(session.token);
+                else if (session?.mode === 'account') client?.connect(account.tokenProvider);
+                else if (session) client?.connect(loadSession()?.token ?? '');
               }}
               data-testid="demo-offline"
             />

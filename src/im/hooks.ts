@@ -213,6 +213,14 @@ export function useProfile(userId: string): UserProfile | undefined {
       live = false;
     };
   }, [c, userId, connected]);
+  // 自己改了昵称（F-ACC-06）：不等下一次 getUsers，立即显示。
+  useEffect(
+    () =>
+      c.on('profileChanged', (id) => {
+        if (id === userId) setLoaded(c.profileOf(userId));
+      }),
+    [c, userId],
+  );
   return loaded?.userId === userId ? loaded : c.profileOf(userId);
 }
 

@@ -3,13 +3,15 @@ import { Avatar, OfficialTag } from '../components/Avatar';
 import { TabBar } from '../components/TabBar';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
-import { useSelf } from '../im/ImProvider';
+import { Icon } from '../components/Icon';
+import { useIm, useSelf } from '../im/ImProvider';
 import { useNotices, useOfficial, useProfile } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 
-/** 我（PRD-ui F-UI-15）：一期不提供资料编辑。显示名来自 users 缓存里的自己。 */
+/** 我（PRD-ui F-UI-15）：账号会话可以改昵称（PRD-chat F-ACC-06，头像随 C2），演示会话不提供。显示名来自 users 缓存里的自己。 */
 export function MePage() {
   const userId = useSelf();
+  const { session } = useIm();
   const toast = useToast();
   const profile = useProfile(userId);
   const official = useOfficial();
@@ -21,7 +23,7 @@ export function MePage() {
       <div className="tt-scroll">
         <div className="tt-card tt-info-head">
           <Avatar id={userId} name={name} size={64} src={profile?.avatar} />
-          <div>
+          <div className="tt-me-info">
             <div className="tt-info-name tt-large" data-testid="me-name">
               {name} {official && <OfficialTag />}
             </div>
@@ -35,6 +37,11 @@ export function MePage() {
               </button>
             </div>
           </div>
+          {session?.mode === 'account' && (
+            <Link className="tt-icon-btn" to="/me/profile" aria-label="编辑资料" data-testid="me-edit">
+              <Icon name="forward" />
+            </Link>
+          )}
         </div>
         <Link className="tt-row" to="/me/settings" data-testid="me-settings">
           设置

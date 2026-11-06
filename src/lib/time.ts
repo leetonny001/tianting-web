@@ -17,6 +17,12 @@ export function formatTime(ts: number, now: number = Date.now()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`;
 }
 
+/** YYYY-MM-DD（本机时区）：找回截止日期（PRD-chat F-ACC-03 规则 6a）。 */
+export function formatDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** YYYY-MM-DD HH:mm（本机时区）。 */
 export function formatDateTime(ts: number): string {
   return `${new Date(ts).getFullYear()}-${formatMonthDayTime(ts)}`;

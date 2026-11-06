@@ -1,4 +1,3 @@
-import type { FatalReason } from '@tianting/sdk';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   BrowserRouter,
@@ -18,13 +17,16 @@ import { NoticeBanner } from './components/NoticeBanner';
 import { NavRail } from './components/TabBar';
 import { ToastProvider, useToast } from './components/Toast';
 import { WideEmpty } from './components/WideEmpty';
-import { ImProvider, useIm, type ClientFactory } from './im/ImProvider';
+import type { AccountDeps } from './im/account';
+import { getPrivacyAck, ImProvider, setPrivacyAck, useIm, type ClientFactory } from './im/ImProvider';
 import { usePendingCount, useTotalUnread } from './im/hooks';
 import { APP_NAME } from './lib/config';
-import { bannedText, messageFor } from './lib/errors';
+import { fatalText, securityNoticeText } from './lib/accountText';
+import { messageFor } from './lib/errors';
 import { isGroupConv } from './lib/group';
 import { useWide, wideRoute } from './lib/layout';
 import { safeRedirect } from './lib/routes';
+import type { TabGuard } from './lib/tabGuard';
 import { ChatInfoPage } from './pages/ChatInfoPage';
 import { ChatPage, decodeParam } from './pages/ChatPage';
 import { ChatsPage } from './pages/ChatsPage';
@@ -38,19 +40,30 @@ import { GroupMembersPage } from './pages/GroupMembersPage';
 import { GroupNewPage } from './pages/GroupNewPage';
 import { GroupNoticePage } from './pages/GroupNoticePage';
 import { GroupsPage } from './pages/GroupsPage';
-import { LoginPage } from './pages/LoginPage';
+import { AccountLoginPage, ForgotPage, LoginPage, PrivacyLink, RegisterPage } from './pages/LoginPage';
 import { MePage } from './pages/MePage';
+import { NicknamePage } from './pages/NicknamePage';
 import { NoticesPage } from './pages/NoticesPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { RemarkPage } from './pages/RemarkPage';
 import { RequestsPage } from './pages/RequestsPage';
+import { SaveRecoveryPage } from './pages/SaveRecoveryPage';
+import { ChangePasswordPage, SecurityPage } from './pages/SecurityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { UserPage } from './pages/UserPage';
 
-export function App({ factory }: { factory?: ClientFactory }) {
+export function App({
+  factory,
+  accountDeps,
+  guardFactory,
+}: {
+  factory?: ClientFactory;
+  accountDeps?: AccountDeps;
+  guardFactory?: () => TabGuard;
+}) {
   return (
     <BrowserRouter>
-      <ImProvider factory={factory}>
+      <ImProvider factory={factory} accountDeps={accountDeps} guardFactory={guardFactory}>
         <ToastProvider>
           <AppRoutes />
         </ToastProvider>
@@ -66,7 +79,7 @@ function GroupOnly({ page }: { page: ReactNode }) {
 }
 
 export function AppRoutes() {
-  const { session } = useIm();
+  const { session, recovery } = useIm();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const demo = params.get('demo') === '1';
@@ -78,6 +91,19 @@ export function AppRoutes() {
   const panel = wide && route.panel;
   const mainLocation = panel ? { pathname: route.mainPath, search: '', hash: '', state: null, key: 'main' } : location;
   const openConv = wide && route.section === 'chats' && route.mainPath.startsWith('/chat/') ? route.mainPath : null;
+  // 恢复码没确认之前哪里都去不了（AC-ACC-01-12、F-ACC-05 规则 1）：不看地址，后退也一样。
+  if (recovery) {
+    return (
+      <>
+        <div className="tt-app" data-testid="app" data-layout="narrow">
+          <main className="tt-main" data-testid="main">
+            <SaveRecoveryPage />
+          </main>
+        </div>
+        <FatalDialog />
+      </>
+    );
+  }
   // 窄屏、宽屏共用这一棵树（条件部分只占位）：<main> 里的页面在视口跨过宽屏条件时不重新挂载，
   // 连接在 ImProvider 里更不受影响（F-UI-02 规则 2）。
   return (
@@ -111,6 +137,7 @@ export function AppRoutes() {
         {session && <NoticeBanner />}
       </div>
       {session && <SessionEffects />}
+      <FatalDialog />
       {session && demo && <DemoPanel />}
     </>
   );
@@ -127,6 +154,19 @@ function Pages({ location, wide }: { location: Partial<Location> | Location; wid
         path="/login"
         element={session ? <Navigate to={safeRedirect(params.get('redirect'))} replace /> : <LoginPage />}
       />
+      {(
+        [
+          ['/login/account', <AccountLoginPage />],
+          ['/register', <RegisterPage />],
+          ['/forgot', <ForgotPage />],
+        ] as const
+      ).map(([path, page]) => (
+        <Route
+          key={path}
+          path={path}
+          element={session ? <Navigate to={safeRedirect(params.get('redirect'))} replace /> : page}
+        />
+      ))}
       <Route
         path="/chats"
         element={<Authed>{wide ? <WideEmpty text="选择一个会话开始聊天" /> : <ChatsPage />}</Authed>}
@@ -164,6 +204,9 @@ function Pages({ location, wide }: { location: Partial<Location> | Location; wid
           ['/me/settings/blocks', <BlocksPage />],
           ['/me/settings/privacy', <PrivacyPage />],
           ['/me/settings/appearance', <AppearancePage />],
+          ['/me/settings/security', <AccountOnly page={<SecurityPage />} />],
+          ['/me/settings/security/password', <AccountOnly page={<ChangePasswordPage />} />],
+          ['/me/profile', <AccountOnly page={<NicknamePage />} />],
         ] as const
       ).map(([path, page]) => (
         <Route key={path} path={path} element={<Authed>{page}</Authed>} />
@@ -190,28 +233,23 @@ function Authed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-const KICK_TEXT: Record<string, string> = {
-  tokenInvalid: '登录已失效，请重新登录',
-  tokenExpired: '登录已过期，请重新登录',
-  banned: '账号已被下线',
-  tooManyConnections: '登录设备过多，当前设备已下线',
-};
-
-/** 被踢弹窗文案（PRD-ui F-UI-18）：先按 kicked.reason，不认识时按关闭码。 */
-export function fatalText(r: FatalReason): string {
-  if (r.kind === 'kicked' && r.reason === 'suspended') return bannedText(r.until);
-  if (r.kind === 'kicked' && KICK_TEXT[r.reason]) return KICK_TEXT[r.reason]!;
-  if (r.code === 4429) return KICK_TEXT.tooManyConnections!;
-  return messageFor(r.code);
+/** 账号安全、改昵称只有账号会话有（F-ACC-07 规则 5）。 */
+function AccountOnly({ page }: { page: ReactNode }) {
+  const { session } = useIm();
+  return session?.mode === 'account' ? page : <Navigate to="/me/settings" replace />;
 }
 
-/** 登录后的全局行为：标签页标题、离开页面提示、发送失败轻提示、被踢弹窗。 */
+/** 登录后的全局行为：标签页标题、离开页面提示、发送失败轻提示、安全提醒、隐私说明更新。 */
 function SessionEffects() {
-  const { client, fatal, logout } = useIm();
+  const { client, session, knownConfig } = useIm();
   const total = useTotalUnread();
   const pending = usePendingCount();
   const toast = useToast();
-  const navigate = useNavigate();
+  // 隐私说明更新后提示一次（F-ACC-10 规则 2）。不确认也能继续用，这次打开页面不再提示。
+  const [privacyClosed, setPrivacyClosed] = useState(false);
+  const privacy = knownConfig?.privacyNotice;
+  const showPrivacy =
+    session?.mode === 'account' && !!privacy && !privacyClosed && getPrivacyAck(session.userId) !== privacy.version;
 
   // 标签页标题（F-UI-23）："(7) 天听"，0 时为"天听"。
   useEffect(() => {
@@ -238,6 +276,49 @@ function SessionEffects() {
       }) as (() => void) | undefined,
     [client, toast],
   );
+
+  // 账号安全提醒（AC-ACC-02-13）。
+  useEffect(
+    () =>
+      client?.on('securityNotice', (n) => {
+        const text = securityNoticeText(n.kind);
+        if (text) toast(text);
+      }) as (() => void) | undefined,
+    [client, toast],
+  );
+
+  if (!showPrivacy) return null;
+  return (
+    <Dialog
+      testId="privacy-update-dialog"
+      onDismiss={() => setPrivacyClosed(true)}
+      actions={
+        <button
+          className="tt-btn tt-btn-primary"
+          onClick={() => {
+            setPrivacyAck(session.userId, privacy.version);
+            setPrivacyClosed(true);
+          }}
+          data-testid="privacy-update-ok"
+        >
+          知道了
+        </button>
+      }
+    >
+      隐私说明已更新
+      {privacy.url && (
+        <>
+          ，请查看 <PrivacyLink url={privacy.url} />
+        </>
+      )}
+    </Dialog>
+  );
+}
+
+/** 被踢、登录失效的弹窗。保存恢复码页上也可能出现（recoveryCodeStale）。 */
+function FatalDialog() {
+  const { fatal, logout } = useIm();
+  const navigate = useNavigate();
 
   // 被踢弹窗不能用浏览器后退关闭（AC-UI-18-1）：弹窗期间每次后退都把当前地址推回去。
   useEffect(() => {

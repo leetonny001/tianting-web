@@ -24,7 +24,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/lib/uiPrefs.ts', 'e2e/**/*.ts'],
+    files: ['src/lib/uiPrefs.ts', 'e2e/**/*.ts', 'src/**/*.test.{ts,tsx}'],
     rules: { 'no-restricted-globals': 'off' },
   },
   {

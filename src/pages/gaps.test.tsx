@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { renderLoggedIn, settle } from '../test/harness';
 
 const G = 'group:g1';
@@ -97,19 +97,30 @@ describe('被移出 / 解散 / 未知会话（F-UI-33）', () => {
   });
 });
 
-describe('生产构建的登录页（AC-UI-03-9）', () => {
-  it('VITE_DEMO_LOGIN=false 只显示"请从业务方入口进入天听"，没有输入框', async () => {
-    vi.resetModules();
-    vi.doMock('../lib/config', async (orig) => ({
-      ...(await orig<typeof import('../lib/config')>()),
-      DEMO_LOGIN: false,
-    }));
-    const { App } = await import('../App');
-    window.history.pushState(null, '', '/chats');
-    render(<App />);
-    expect(window.location.pathname).toBe('/login');
-    expect(screen.getByText('请从业务方入口进入天听')).toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    vi.doUnmock('../lib/config');
+describe('第一次连上之前按回车', () => {
+  // 单聊：群要先探测成员，连上之前没有输入框。
+  const C = 'c2c:alice:bob';
+  it('不丢消息：输入框内容保留并提示，没有报错；连上后再按回车发出去', async () => {
+    const { c } = await renderLoggedIn(at(C), { pending: true });
+    await settle();
+    const input = screen.getByTestId('composer-input');
+    fireEvent.change(input, { target: { value: '先打的字' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    expect(input).toHaveValue('先打的字');
+    expect(screen.getByTestId('toast')).toHaveTextContent('正在连接，请稍后再发送');
+    expect(screen.queryByTestId('message')).not.toBeInTheDocument();
+
+    await act(async () => {
+      c.open();
+      c.ack('auth', { userId: 'alice', serverTime: Date.now() });
+    });
+    await settle();
+    await act(async () => c.ack('convs', { convs: [{ ...baseConv(C), type: 'c2c' }], truncated: false }));
+    await settle();
+    fireEvent.keyDown(screen.getByTestId('composer-input'), { key: 'Enter' });
+    await settle();
+    expect(screen.getByTestId('composer-input')).toHaveValue('');
+    expect(screen.getByTestId('message')).toHaveTextContent('先打的字');
   });
 });

@@ -459,6 +459,7 @@ a {
   align-items: center;
   gap: var(--tt-space-5);
   height: 100%;
+  overflow-y: auto;
   padding: 15vh var(--tt-space-5) var(--tt-space-5);
   background: var(--tt-color-bg);
 }
@@ -494,6 +495,53 @@ a {
   margin: 0;
   font-size: var(--tt-font-caption);
   color: var(--tt-color-text-tertiary);
+}
+
+/* 账号页面（PRD-chat 第 13.3 节） */
+.tt-login-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--tt-space-2) var(--tt-space-4);
+  font-size: var(--tt-font-small);
+}
+.tt-login-links .tt-link {
+  min-height: var(--tt-size-touch-min);
+  display: inline-flex;
+  align-items: center;
+}
+.tt-recovery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tt-space-4);
+  width: 100%;
+}
+.tt-recovery-code {
+  padding: var(--tt-space-4);
+  border: 1px solid var(--tt-color-border-input);
+  border-radius: var(--tt-radius-md);
+  background: var(--tt-color-surface);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: var(--tt-font-body);
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.tt-recovery .tt-login-hint {
+  text-align: center;
+}
+.tt-recovery-warning {
+  margin: 0;
+  font-size: var(--tt-font-small);
+  color: var(--tt-color-danger);
+  text-align: center;
+}
+.tt-me-info {
+  flex: 1;
+  min-width: 0;
+}
+.tt-dialog-field {
+  margin-top: var(--tt-space-3);
 }
 
 /* 卡片、行 */

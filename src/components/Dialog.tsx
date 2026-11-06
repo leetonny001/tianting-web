@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import { isTopLayer, useFocusTrap } from '../lib/focus';
 
 /**
@@ -26,6 +26,7 @@ export function Dialog({
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const labelId = useId(); // 弹窗要有可读名称（AC-CHAT-90-9）：有标题用标题，没有用正文
   useFocusTrap(ref, { fallback: () => returnFocus?.current });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -44,13 +45,22 @@ export function Dialog({
         className={`tt-dialog${sheet ? ' tt-sheet' : ''}`}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title || children ? labelId : undefined}
         tabIndex={-1}
         ref={ref}
         onClick={(e) => e.stopPropagation()}
         data-testid={testId}
       >
-        {title && <h2 className="tt-dialog-title">{title}</h2>}
-        {children && <div className="tt-dialog-body">{children}</div>}
+        {title && (
+          <h2 className="tt-dialog-title" id={labelId}>
+            {title}
+          </h2>
+        )}
+        {children && (
+          <div className="tt-dialog-body" id={title ? undefined : labelId}>
+            {children}
+          </div>
+        )}
         <div className="tt-dialog-actions">{actions}</div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { formatDateTime, formatMonthDayTime } from '../lib/time';
+import { stubFetch } from '../test/harness-fetch';
 import { renderLoggedIn, settle } from '../test/harness';
 
 const AB = 'c2c:alice:bob';
@@ -77,18 +78,16 @@ describe('封禁（AC-ADM-13-11、AC-UI-43-2、AC-UI-43-4）', () => {
     [new Date(2031, 0, 2, 3, 4).getTime(), '账号已被封禁，解封时间：2031-01-02 03:04'],
     [null, '账号已被封禁'],
   ])('/demo/login 返回 403 / 4034（bannedUntil = %s）：登录页提示 %s，停留在登录页', async (bannedUntil, text) => {
-    const fetchMock = vi.fn(
+    stubFetch(
       async () => new Response(JSON.stringify({ code: 4034, msg: 'x', details: { bannedUntil } }), { status: 403 }),
     );
-    vi.stubGlobal('fetch', fetchMock);
     window.history.pushState(null, '', '/login');
     render(<App />);
-    fireEvent.change(screen.getByTestId('login-username'), { target: { value: 'u1' } });
+    fireEvent.change(await screen.findByTestId('login-username'), { target: { value: 'u1' } });
     fireEvent.click(screen.getByTestId('login-submit'));
     await waitFor(() => expect(screen.getByTestId('login-error').textContent).toBe(text));
     expect(window.location.pathname).toBe('/login');
     expect(sessionStorage.length).toBe(0);
-    vi.unstubAllGlobals();
   });
 });
 
@@ -188,17 +187,11 @@ describe('消息被删除（AC-ADM-31-1、AC-ADM-31-3、AC-ADM-31-5、AC-UI-42-4
 });
 
 describe('SDK 调试接口的范围', () => {
-  it('生产构建（DEMO_LOGIN = false）不挂到 window', async () => {
-    vi.resetModules();
-    vi.doMock('../lib/config', async (orig) => ({
-      ...(await orig<typeof import('../lib/config')>()),
-      DEMO_LOGIN: false,
-    }));
-    const { renderLoggedIn: render2 } = await import('../test/harness');
-    await render2('/chats', { convs: [] });
+  it('生产构建（VITE_DEMO_LOGIN = false）不挂到 window', async () => {
+    vi.stubEnv('VITE_DEMO_LOGIN', 'false');
+    await renderLoggedIn('/chats', { convs: [] });
     expect('__tiantingDebug' in window).toBe(false);
-    vi.doUnmock('../lib/config');
-    vi.resetModules();
+    vi.unstubAllEnvs();
   });
 });
 
