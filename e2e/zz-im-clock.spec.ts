@@ -176,13 +176,14 @@ test('TC-FILE-06-05（H5，AC-FILE-06-6）：过期的图片和文件显示"图�
   }
 });
 
-test('TC-FILE-07-10（H5，页面没刷新）：待发送的图片文件 24 小时后被清理，重发时 send 得到 4096，用内存里的源重新上传后发出', async ({
+test('TC-FILE-07-10（H5，页面没刷新）：待发送的图片文件 24 小时后被清理，重发时 send 得到 4096 或 4048，用内存里的源重新上传后发出', async ({
   browser,
 }) => {
   test.setTimeout(90_000);
-  // 现在的服务端：file_purge 把超过 24 小时没绑定的文件整行删掉，之后 send 回 4048（文件不存在），不是 F-FILE-07 规则 4、
-  // AC-FILE-07-10 写的 4096，SDK 不会重新上传，消息停在"文件不存在或已过期"。断言按 PRD 写，服务端修好之前预期失败（问题 H15）。
-  test.fail(true, 'im-server 清理后 send 回 4048 而不是 4096（问题 H15）');
+  // file_purge 把超过 24 小时没绑定的文件整行删掉，之后 send 回 4048（文件不存在）。PRD-chat v1.4（P-37 ①②，问题 H15）：
+  // 这台设备自己上传的 fileId 收到 4048 和 4096 一样按已清理处理，用内存里的源重新上传；AC-FILE-07-10 的错误码是 4096、4048。
+  // IM 钟只在清理时推进 25 小时，重发前拨回（同 Android 的 tc_file_07_10）：演示登录的 token 固定 24 小时、不能刷新
+  // （PRD C-21），钟停在 25 小时后重新上传的 /v1/files/* 只能 4011；页面一直开着时 SDK 会自己刷新 token，这里不模拟。
   const a = uid('ra');
   const b = uid('rb');
   await admin('POST', '/admin/users/import', { users: [{ userId: a }, { userId: b }] });
@@ -219,24 +220,25 @@ test('TC-FILE-07-10（H5，页面没刷新）：待发送的图片文件 24 小�
   try {
     await admin('POST', '/admin/test/clock', { nowMs: Date.now() + 25 * 3_600_000 });
     await admin('POST', '/admin/test/jobs/file_purge/run');
-    await alice.getByTestId('failed-icon').click();
-    await alice.getByTestId('retry-dialog').getByRole('button', { name: '重发' }).click();
-    await expect(msg)
-      .toHaveAttribute('data-status', 'sent', { timeout: 20_000 })
-      .catch((e: unknown) => {
-        console.log(`TC-FILE-07-10 send errors ${JSON.stringify(sendErrors)}`); // 只有错误码
-        throw e;
-      });
-    expect(sendErrors).toContain(4096);
-    expect(net.puts.length).toBe(putsBefore + 2); // 从头重新上传了原图和缩略图（RC2-23）
-    const secondFile = await alice.getByTestId('img-bubble').getAttribute('data-file-id');
-    expect(secondFile).not.toBe(firstFile);
-    const bob = await loginAs(browser, b);
-    await bob.goto(chatUrl(c2cId(a, b)));
-    await expect(bob.getByTestId('img-bubble')).toHaveCount(1);
-    await bob.context().close();
   } finally {
     await admin('POST', '/admin/test/clock', { nowMs: null });
   }
+  await alice.getByTestId('failed-icon').click();
+  await alice.getByTestId('retry-dialog').getByRole('button', { name: '重发' }).click();
+  await expect(msg)
+    .toHaveAttribute('data-status', 'sent', { timeout: 20_000 })
+    .catch((e: unknown) => {
+      console.log(`TC-FILE-07-10 send errors ${JSON.stringify(sendErrors)}`); // 只有错误码
+      throw e;
+    });
+  expect(sendErrors).toHaveLength(1); // 只有被清理的那一次，重新上传后的 send 成功
+  expect([4096, 4048]).toContain(sendErrors[0]);
+  expect(net.puts.length).toBe(putsBefore + 2); // 从头重新上传了原图和缩略图（RC2-23）
+  const secondFile = await alice.getByTestId('img-bubble').getAttribute('data-file-id');
+  expect(secondFile).not.toBe(firstFile);
+  const bob = await loginAs(browser, b);
+  await bob.goto(chatUrl(c2cId(a, b)));
+  await expect(bob.getByTestId('img-bubble')).toHaveCount(1);
+  await bob.context().close();
   await alice.context().close();
 });
