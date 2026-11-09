@@ -220,3 +220,64 @@ test('TC-ACC-03-45 真实绝对上限：access 到期等于上限，不刷新，
   expect(await storedSession(page)).toBeNull();
   await ctx.close();
 });
+
+// P-35 L3（AC-ACC-03-12 后半）：在线时 access 在服务端到期，服务端按自己的定时器踢 tokenExpired，SDK 刷新（200）后重新连接，
+// 不弹窗。要短的 access：`IM_ACCESS_TTL=30s npx playwright test -g "TC-ACC-03-12"`，默认服务端上跳过（同 iOS 的 03-12，
+// tianting-ios@54caa87）。调 IM 钟做不到：到期定时器在 auth 时按剩余时间用真实时间计时。
+test('TC-ACC-03-12 真实服务端：在线时 access 到期，服务端踢 tokenExpired，刷新 200，重新连接，没有弹窗', async ({
+  browser,
+}) => {
+  test.setTimeout(150_000);
+  const u = await apiRegister('exp12');
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const events: string[] = []; // 只有事件名、状态码、kicked 的 reason（不记 token）
+  page.on('websocket', (ws) => {
+    if (!/\/ws(\?|$)/.test(ws.url())) return; // 开发服务器自己的 HMR 连接
+    events.push('ws:open');
+    ws.on('framereceived', (f) => {
+      const m = /"type":"kicked"[^}]*"reason":"([a-zA-Z]+)"|"reason":"([a-zA-Z]+)"[^}]*"type":"kicked"/.exec(
+        String(f.payload),
+      );
+      if (m) events.push(`kicked:${m[1] ?? m[2]}`);
+    });
+    ws.on('close', () => events.push('ws:close'));
+  });
+  page.on('request', (r) => {
+    if (r.url().endsWith('/v1/account/token/refresh')) events.push('req:refresh');
+  });
+  page.on('response', (r) => {
+    if (r.url().endsWith('/v1/account/token/refresh')) events.push(`refresh:${r.status()}`);
+  });
+  await accountLogin(page, u.username);
+  await expect(page).toHaveURL(/\/chats$/);
+  const s = JSON.parse((await storedSession(page))!) as { accessExpiresAt: number };
+  test.skip(s.accessExpiresAt - Date.now() > 120_000, '要用 IM_ACCESS_TTL=30s 的服务端单独跑');
+  await expect.poll(() => events.includes('kicked:tokenExpired'), { timeout: 90_000, intervals: [500] }).toBe(true);
+  const after = () => events.slice(events.indexOf('kicked:tokenExpired'));
+  await expect.poll(() => after().filter((e) => e === 'ws:open').length, { timeout: 20_000 }).toBeGreaterThan(0);
+  const seq = after();
+  const refresh = seq.indexOf('req:refresh');
+  const reopen = seq.indexOf('ws:open');
+  expect(refresh, JSON.stringify(seq)).toBeGreaterThan(0);
+  expect(seq[seq.indexOf('refresh:200')], JSON.stringify(seq)).toBe('refresh:200');
+  expect(seq.indexOf('refresh:200'), JSON.stringify(seq)).toBeLessThan(reopen);
+  await page.waitForTimeout(2000);
+  await expect(page.getByTestId('kicked-dialog')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/chats$/);
+  expect(events.filter((e) => e.startsWith('kicked:') && e !== 'kicked:tokenExpired')).toEqual([]);
+  expect(events.filter((e) => e.startsWith('refresh:') && e !== 'refresh:200')).toEqual([]);
+  // 连接是好的：能发消息（站内跳转，不刷新页面）
+  await page.evaluate(
+    (path) => {
+      history.pushState(null, '', path);
+      dispatchEvent(new PopStateEvent('popstate'));
+    },
+    `/chat/${encodeURIComponent(`c2c:${u.username}:${u.username}`)}`,
+  );
+  await page.getByTestId('composer-input').fill('到期后还能发');
+  await page.getByTestId('composer-input').press('Enter');
+  await expect(page.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
+  console.log(`TC-ACC-03-12 events ${JSON.stringify(events)}`);
+  await ctx.close();
+});

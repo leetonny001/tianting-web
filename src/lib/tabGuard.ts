@@ -48,20 +48,33 @@ export function locksGuard(locks: LockManager): TabGuard {
     free = null;
   };
 
+  // 正在进行的 claim：登录、改密换了 sid 之后马上要刷新时（access 到手就不足 6 小时，P-35 L3），
+  // 刷新前的确认要等它拿到锁，否则把自己当成"别的页面在用"，本地结束会话。
+  let claiming: Promise<boolean> | null = null;
+
   return {
-    async claim(next) {
-      if (sid === next && held) return true;
+    claim(next) {
+      if (sid === next && held) return Promise.resolve(true);
+      if (sid === next && claiming) return claiming;
       release();
       sid = next;
-      for (let i = 0; i < LOCK_ATTEMPTS; i++) {
-        if (i > 0) await sleep(LOCK_RETRY_MS);
-        if (sid !== next) return false;
-        if (await tryOnce(lockName(next), next)) return true;
-      }
-      if (sid === next) sid = null;
-      return false;
+      const p = (async () => {
+        for (let i = 0; i < LOCK_ATTEMPTS; i++) {
+          if (i > 0) await sleep(LOCK_RETRY_MS);
+          if (sid !== next) return false;
+          if (await tryOnce(lockName(next), next)) return true;
+        }
+        if (sid === next) sid = null;
+        return false;
+      })();
+      claiming = p;
+      void p.finally(() => {
+        if (claiming === p) claiming = null;
+      });
+      return p;
     },
     async confirm() {
+      if (claiming) await claiming;
       if (!sid || !held) return false;
       const name = lockName(sid);
       try {
@@ -104,14 +117,24 @@ export function broadcastGuard(open: (name: string) => BroadcastChannel, waitMs 
     return !answered.has(name);
   };
 
+  let claiming: Promise<boolean> | null = null; // 同 locksGuard：确认要等正在进行的 claim
+
   return {
-    async claim(next) {
+    claim(next) {
       sid = next;
-      if (await ask(next)) return true;
-      if (sid === next) sid = null;
-      return false;
+      const p = (async () => {
+        if (await ask(next)) return true;
+        if (sid === next) sid = null;
+        return false;
+      })();
+      claiming = p;
+      void p.finally(() => {
+        if (claiming === p) claiming = null;
+      });
+      return p;
     },
     async confirm() {
+      if (claiming) await claiming;
       return sid ? ask(sid) : false;
     },
     release() {

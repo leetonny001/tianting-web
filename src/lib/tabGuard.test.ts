@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { broadcastGuard, locksGuard } from './tabGuard';
 
 /** 假的 LockManager：同名锁一次一个，放掉之后才能再拿；和浏览器一样，一个 manager 代表整个源。 */
-function fakeLocks() {
+function fakeLocks(grantDelayMs = 0) {
   const held = new Set<string>();
   const manager = {
     request: async (
@@ -10,6 +10,7 @@ function fakeLocks() {
       _opts: { ifAvailable: boolean },
       cb: (lock: { name: string } | null) => Promise<void> | undefined,
     ) => {
+      if (grantDelayMs) await new Promise((r) => setTimeout(r, grantDelayMs)); // 浏览器异步交锁
       if (held.has(name)) return cb(null);
       held.add(name);
       const done = cb({ name });
@@ -101,5 +102,25 @@ describe('多标签页互斥（F-ACC-03 规则 9，TC-ACC-03-14）', () => {
     (d as unknown as { release(): void }).release();
     await d.claim('s3').then((ok) => expect(ok).toBe(false));
     expect(await c.confirm()).toBe(true);
+  });
+
+  it('claim 还没拿到锁时就要刷新（access 到手就不足 6 小时）：确认等 claim 结束，不当成别的页面（P-35 L3）', async () => {
+    const { manager } = fakeLocks(5);
+    const a = locksGuard(manager);
+    const claimed = a.claim('s1'); // 不等
+    expect(await a.confirm()).toBe(true);
+    expect(await claimed).toBe(true);
+    const b = locksGuard(manager);
+    const lost = b.claim('s1');
+    expect(await b.confirm()).toBe(false); // 等到 claim 失败之后才回答
+    expect(await lost).toBe(false);
+  });
+
+  it('BroadcastChannel 退路同样等 claim', async () => {
+    const open = fakeBus();
+    const a = broadcastGuard(open, 5);
+    const claimed = a.claim('s1');
+    expect(await a.confirm()).toBe(true);
+    expect(await claimed).toBe(true);
   });
 });
