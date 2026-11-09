@@ -2,7 +2,7 @@
   "name": "tianting-web",
   "version": "0.1.0",
   "private": true,
-  "description": "天听 H5 客户端（React），UI 参考微信的信息架构，使用天听自有品牌",
+  "description": "天听 H5 客户端（React），天听是自研的独立 IM 产品，使用天听自有品牌",
   "type": "module",
   "scripts": {
     "dev": "vite",
