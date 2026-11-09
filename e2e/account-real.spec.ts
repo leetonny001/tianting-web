@@ -208,15 +208,12 @@ test('TC-ACC-03-45 真实绝对上限：access 到期等于上限，不刷新，
   expect(refreshes).toBe(0);
   expect(sockets).toBe(1);
   await expect(page.getByTestId('kicked-dialog')).toContainText('登录已失效，请重新登录', { timeout: 10_000 });
-  // 到期之后（问题 F2 已在服务端修复）：没有成功的刷新，不重连。服务端在上限那一秒踢 tokenExpired（JWT 的 exp 只到秒）时
-  // 客户端最多问一次，服务端按到期拒绝（401 / 4019）。
+  // 到期之后（F2 服务端已修；P-35 L1：access 到期等于上限时收到 kicked/tokenExpired，SDK 直接登录失效）：
+  // 一次刷新请求都没有，不重连（AC-ACC-03-43）。
   await page.waitForTimeout(3000);
   console.log(`TC-ACC-03-45 refresh answers ${JSON.stringify(answers)}, sockets ${sockets}`); // 只有状态码和错误码
-  expect(refreshes, JSON.stringify(answers)).toBeLessThanOrEqual(1);
-  expect(
-    answers.every((a) => a === '401/4019'),
-    JSON.stringify(answers),
-  ).toBe(true);
+  expect(refreshes, JSON.stringify(answers)).toBe(0);
+  expect(answers).toEqual([]);
   expect(sockets).toBe(1);
   await page.getByTestId('kicked-dialog').getByText('确定').click();
   await expect(page).toHaveURL(/\/login/);
