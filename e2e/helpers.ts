@@ -4,7 +4,8 @@ import { CALLER_ID, CALLER_SECRET } from './caller';
 import { ADMIN, SERVER } from './ports';
 
 export { ADMIN };
-const ADMIN_KEY = 'dev-admin-key'; // 开发环境默认的旧密钥（测试模式，只在本机测试服务端上）
+// 开发环境默认的旧密钥（测试模式，只在本机测试服务端上）。TT_E2E_ADMIN_KEY：连别的仓库起的测试服务端时用它的随机密钥（FE-640 跨端用例）。
+const ADMIN_KEY = process.env.TT_E2E_ADMIN_KEY ?? 'dev-admin-key';
 
 let n = 0;
 /** 每个用例用不同的用户名，测试之间互不影响（同一个服务端实例）。 */
