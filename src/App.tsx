@@ -18,11 +18,19 @@ import { NavRail } from './components/TabBar';
 import { ToastProvider, useToast } from './components/Toast';
 import { WideEmpty } from './components/WideEmpty';
 import type { AccountDeps } from './im/account';
-import { getPrivacyAck, ImProvider, setPrivacyAck, useIm, type ClientFactory } from './im/ImProvider';
+import {
+  getPrivacyAck,
+  ImProvider,
+  setPrivacyAck,
+  useIm,
+  type ClientFactory,
+  type FilesFactory,
+} from './im/ImProvider';
 import { usePendingCount, useTotalUnread } from './im/hooks';
 import { APP_NAME } from './lib/config';
 import { fatalText, securityNoticeText } from './lib/accountText';
 import { messageFor } from './lib/errors';
+import { attachmentErrorText } from './lib/media';
 import { isGroupConv } from './lib/group';
 import { useWide, wideRoute } from './lib/layout';
 import { safeRedirect } from './lib/routes';
@@ -56,14 +64,16 @@ export function App({
   factory,
   accountDeps,
   guardFactory,
+  filesFactory,
 }: {
   factory?: ClientFactory;
   accountDeps?: AccountDeps;
   guardFactory?: () => TabGuard;
+  filesFactory?: FilesFactory;
 }) {
   return (
     <BrowserRouter>
-      <ImProvider factory={factory} accountDeps={accountDeps} guardFactory={guardFactory}>
+      <ImProvider factory={factory} accountDeps={accountDeps} guardFactory={guardFactory} filesFactory={filesFactory}>
         <ToastProvider>
           <AppRoutes />
         </ToastProvider>
@@ -270,9 +280,16 @@ function SessionEffects() {
   // 发送失败每次只提示一次（F-UI-08 规则 3）：超时和被踢不弹轻提示。
   useEffect(
     () =>
-      client?.on('sendFailed', (_conv, _id, err) => {
+      client?.on('sendFailed', (conv, id, err) => {
         // 4035 / 4036 / 4137 在聊天页插入提示条（F-UI-31），4031 有禁用条（F-UI-41 规则 5），都不弹轻提示。
-        if (typeof err === 'number' && ![4031, 4035, 4036, 4137].includes(err)) toast(messageFor(err, 'send'));
+        if (typeof err === 'number' && [4031, 4035, 4036, 4137].includes(err)) return;
+        // 图片、文件按附件的文案（AC-FILE-01-12、01-17、02-13）：上传额度、任务太多、处理失败、网络。
+        const m = client.messages(conv).find((x) => x.clientMsgId === id);
+        if (m && (m.type === 'image' || m.type === 'file')) {
+          if (err !== 'timeout' && err !== 'kicked') toast(attachmentErrorText(m));
+          return;
+        }
+        if (typeof err === 'number') toast(messageFor(err, 'send'));
       }) as (() => void) | undefined,
     [client, toast],
   );

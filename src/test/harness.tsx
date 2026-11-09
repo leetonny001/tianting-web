@@ -1,5 +1,5 @@
-import { IMClient, type Clock } from '@tianting/sdk';
-import { FakeClock, FakeHttp, FakeTransport, type FakeConnection } from '@tianting/sdk/testing';
+import { FileClient, IMClient, StaticTokenAuth, type Clock } from '@tianting/sdk';
+import { FakeClock, FakeHttp, FakeTransport, FakeUpload, type FakeConnection } from '@tianting/sdk/testing';
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { App } from '../App';
@@ -56,12 +56,14 @@ export async function renderLoggedIn(
     mutedUntil?: number | null;
     /** true：连接没有打开就返回，调用方自己 open、ack（测"第一次连上之前"）。 */
     pending?: boolean;
+    /** 给 IMClient 配文件接口（PRD-chat 第 13.1 节）：/v1/files/* 走这个假 HTTP，PUT 走假上传。 */
+    files?: { http: FakeHttp; upload: FakeUpload };
   } = {},
 ) {
   const userId = opts.userId ?? 'alice';
   const transport = new FakeTransport();
   let n = 0;
-  const factory = () =>
+  const factory = (files: FileClient) =>
     new IMClient({
       url: 'ws://test/ws',
       transport,
@@ -69,10 +71,16 @@ export async function renderLoggedIn(
       browserEvents: false,
       isVisible: () => true,
       newId: () => `cid-${String(++n).padStart(4, '0')}`,
+      ...(opts.files ? { files } : {}),
     });
+  const f = opts.files;
+  const filesFactory = f
+    ? () =>
+        new FileClient({ auth: new StaticTokenAuth('http://test', 't', f.http), upload: f.upload, clock: opts.clock })
+    : undefined;
   saveSession({ userId, token: 't' });
   window.history.pushState(null, '', path);
-  const view = render(<App factory={factory} />);
+  const view = render(<App factory={factory} filesFactory={filesFactory} />);
   const c: FakeConnection = transport.current;
   if (opts.pending) return { ...view, c, transport };
   await act(async () => {

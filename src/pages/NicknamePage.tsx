@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
@@ -6,17 +6,24 @@ import { useIm, useSelf } from '../im/ImProvider';
 import { useProfile } from '../im/hooks';
 import { accountErrorText } from '../lib/accountText';
 import { textLen } from '../lib/social';
+import { AvatarEditor } from './AvatarEditor';
 
 const MAX_NICKNAME = 32;
 
-/** 改昵称（F-ACC-06）：本端立即显示，其他端按 10 分钟缓存更新。头像入口随 FE-633。 */
+/** 改昵称、头像（F-ACC-06）：本端立即显示，其他端按 10 分钟缓存更新。头像见 AvatarEditor（FE-633）。 */
 export function NicknamePage() {
   const userId = useSelf();
   const profile = useProfile(userId);
-  return <NicknameForm key={profile?.nickname ?? ''} current={profile?.nickname ?? ''} />;
+  return (
+    <NicknameForm
+      key={profile?.nickname ?? ''}
+      current={profile?.nickname ?? ''}
+      avatar={<AvatarEditor userId={userId} name={profile?.nickname || userId} current={profile?.avatar} />}
+    />
+  );
 }
 
-function NicknameForm({ current }: { current: string }) {
+function NicknameForm({ current, avatar }: { current: string; avatar: ReactNode }) {
   const { account } = useIm();
   const navigate = useNavigate();
   const toast = useToast();
@@ -60,6 +67,7 @@ function NicknameForm({ current }: { current: string }) {
         }
       />
       <div className="tt-scroll tt-form">
+        {avatar}
         <label className="tt-field">
           <span>昵称</span>
           <input

@@ -1258,3 +1258,181 @@ a {
 .tt-draft-tag {
   color: var(--tt-color-danger);
 }
+
+/* 图片和文件消息（PRD-chat F-FILE-02、03，第 13.3、13.4 节） */
+.tt-bubble-att {
+  padding: 0;
+  overflow: hidden;
+  white-space: normal;
+}
+.tt-msg-self .tt-bubble-att {
+  background: var(--tt-color-bubble-other-bg);
+  color: var(--tt-color-bubble-other-text);
+  border-color: var(--tt-color-divider);
+}
+.tt-att-image {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tt-color-divider);
+}
+.tt-att-image-btn {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tt-att-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tt-att-placeholder,
+.tt-att-retry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tt-space-1);
+  width: 100%;
+  height: 100%;
+  padding: var(--tt-space-2);
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-caption);
+  text-align: center;
+}
+.tt-att-pending {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-2);
+  padding: var(--tt-space-1) var(--tt-space-2);
+  font-size: var(--tt-font-caption);
+  color: var(--tt-color-text-secondary);
+  background: var(--tt-color-surface);
+}
+.tt-att-progress {
+  flex: 1;
+  height: 4px;
+  min-width: 40px;
+  border-radius: var(--tt-radius-sm);
+  background: var(--tt-color-divider);
+  overflow: hidden;
+}
+.tt-att-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--tt-color-brand);
+}
+.tt-att-cancel {
+  margin-left: auto;
+  min-height: var(--tt-size-touch-min);
+  font-size: var(--tt-font-small);
+}
+.tt-att-error {
+  margin-top: var(--tt-space-1);
+  font-size: var(--tt-font-caption);
+  color: var(--tt-color-danger);
+}
+.tt-att-file-wrap {
+  max-width: 260px;
+}
+.tt-att-file {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-2);
+  width: 100%;
+  min-height: var(--tt-size-touch-min);
+  padding: var(--tt-space-2) var(--tt-space-3);
+  text-align: left;
+  color: inherit;
+}
+.tt-att-file-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+/* 中间省略（AC-FILE-03-4）：前段可以省略，结尾和扩展名始终可见 */
+.tt-att-file-name {
+  display: flex;
+  min-width: 0;
+  white-space: pre;
+}
+.tt-att-file-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tt-att-file-tail {
+  flex-shrink: 0;
+}
+.tt-att-file-size {
+  font-size: var(--tt-font-caption);
+  color: var(--tt-color-text-secondary);
+}
+.tt-attach-menu {
+  bottom: calc(var(--tt-size-touch-min) + var(--tt-space-4) + env(safe-area-inset-bottom));
+  left: max(var(--tt-space-2), calc((100vw - var(--tt-size-container)) / 2 + var(--tt-space-2)));
+}
+[data-layout='wide'] .tt-attach-menu {
+  left: calc(var(--tt-size-rail) + var(--tt-size-list-column) + var(--tt-space-2));
+  bottom: calc(var(--tt-size-composer-wide) + var(--tt-space-2));
+}
+.tt-chat-drop {
+  outline: 2px dashed var(--tt-color-brand);
+  outline-offset: -4px;
+}
+.tt-viewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 70vh;
+  min-height: 160px;
+  overflow: auto;
+}
+.tt-viewer img {
+  max-width: 100%;
+  max-height: 70vh;
+  transform-origin: center;
+}
+.tt-viewer-zoom {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--tt-font-small);
+}
+.tt-avatar-edit {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-4);
+}
+.tt-crop {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--tt-radius-md);
+  background: var(--tt-color-divider);
+  touch-action: none;
+  cursor: grab;
+}
+.tt-crop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tt-crop-zoom {
+  display: block;
+  width: 100%;
+  margin-top: var(--tt-space-3);
+}
+/* 只给读屏软件的文字（可见文字之外的分隔、动作说明） */
+.tt-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

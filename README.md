@@ -7,6 +7,7 @@
 - 已有：M3 全部页面和社交页面；群管理（发起群聊、群设置、公告、成员、邀请、提示消息）；封禁、消息删除、禁言提示；宽屏三栏（`src/lib/layout.ts`，跨过宽屏条件时不改路由、不重连、输入框实例不变）、右侧侧板、键盘操作与焦点陷阱（`src/lib/focus.ts`）；深色模式与外观设置（首帧前由同源 `public/theme-init.js` 设置 `data-theme`，CSP 不放宽）；系统 emoji 面板；草稿（只在内存，`src/im/drafts.ts`）；右键菜单与删除失败消息。
 - 质量：组件测试（Vitest + FakeTransport）；端到端测试（真实 im-server，默认手机视口，`e2e/wide.spec.ts` 用宽屏上下文），含 axe 浅色 / 深色扫描、500 个会话渲染性能、生产构建 CSP 响应头。
 - 系统通知：横幅、`/me/notices` 列表、"我"页未查看数（`src/im/notices.ts`，PRD-ui F-UI-44、PRD-live F-PUSH-12）。列表只在内存，刷新后靠回放恢复；`localStorage` 只有 `ui.noticeSeen.{userId}` 这一个数字，退出登录时删除。
+- 图片和文件（PRD-chat C2）：输入区"+"、拖放、粘贴；发送前用 canvas 处理（`src/lib/imageProcess.ts`：按 EXIF 方向转正后重新编码、像素上限、缩略图），XHR 直传对象存储；气泡懒加载、按 `fileId + variant` 缓存成 `blob:`（`src/im/attachments.ts`）；文件由浏览器下载；头像裁剪 512×512。服务端 `features.files` 关闭时没有入口。
 - 待做：全群禁言提示（P1）、PC 客户端（tianting-desktop）。
 
 ## 开发
@@ -18,7 +19,7 @@
 npm install
 npm run dev            # http://localhost:5173，/demo/login 和 /ws 转发到 TIANTING_SERVER（默认 http://127.0.0.1:8080）
 npm test               # 单元 / 组件测试（Vitest + Testing Library，SDK 用 FakeTransport）
-npm run e2e            # 端到端：自动启动测试模式的 im-server 和 Vite，用本机 Chrome 跑（需要 Go）
+npm run e2e            # 端到端：自动启动测试模式的 im-server（IM_FILES_ENABLED=1）、假 S3（e2e/fake_s3.py，python3 标准库）和 Vite，用本机 Chrome 跑（需要 Go）
 npm run lint && npm run typecheck && npm run format:check
 npm run check          # token 生成文件、对比度 / 色相、颜色字面量、品牌词
 npm run build && node scripts/check-bundle.mjs && node scripts/check-dist.mjs && node scripts/check-assets.mjs   # 首屏 JS ≤ 200KB；CSP、theme-init、无管理密钥字符串、无 source map；无大位图、svg 在图标清单内
@@ -30,7 +31,8 @@ npm run build && node scripts/check-bundle.mjs && node scripts/check-dist.mjs &&
 
 - **颜色**只来自 `src/theme/tokens.json`（生成 `--tt-*` CSS 变量），组件里不写任何颜色字面量（`npm run check` 检查）。图标全部来自 Lucide（ISC，见 `LICENSES/`），`stroke-width` 1.75、`currentColor`。
 - **消息只按纯文本渲染**：ESLint 禁止 `dangerouslySetInnerHTML` / `innerHTML`。
-- **localStorage** 只能存 `ui.*` 偏好，统一走 `src/lib/uiPrefs.ts`（ESLint 禁止直接调用）；生产构建带 CSP，部署示例见 `deploy/nginx.conf`。
+- **localStorage** 只能存 `ui.*` 偏好，统一走 `src/lib/uiPrefs.ts`（ESLint 禁止直接调用）；生产构建带 CSP，部署示例见 `deploy/nginx.conf`、`deploy/tianting-headers.conf`。
+- **对象存储的源**用构建变量 `VITE_STORAGE_ORIGINS` 给（空格分隔的具体源，如 `https://files.example.com`），只加进 CSP 的 `connect-src`，不接受 `https:` 或通配；存储的 CORS 要允许本站 PUT、GET。预签名地址和文件名不进日志、不进存储。
 - **token** 只放 `sessionStorage`，不进 URL、不进日志；构建产物里没有任何管理密钥（H5 只调用 `/demo/login` 和 `/ws`）。
 - **`data-testid`** 用小写短横线命名（如 `composer-input`、`conv-item`），原生端的 `testTag` / `accessibilityIdentifier` 用同样的名字。
 

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CALLERS_JSON, QUARANTINE_KEY } from './e2e/caller';
-import { ADMIN, NODEMO, PORTS, PROD, SERVER, WEB } from './e2e/ports';
+import { ADMIN, NODEMO, PORTS, PROD, S3, SERVER, WEB } from './e2e/ports';
 
 // 端到端测试连真实的 im-server（测试模式 + 演示登录）：服务端源码默认在同级目录 ../tianting-server/server（或旧名 ../im-mvp/server），
 // 也可以用 TIANTING_SERVER_DIR 指定。
@@ -32,6 +32,13 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Pixel 7'], channel: process.env.CI ? undefined : 'chrome' } }],
   webServer: [
     {
+      // 假 S3（PRD-chat 第 4.5 节）：im-server 的对象存储和浏览器的直传、下载都打到这里；CORS 只放行三个页面的源。
+      command: `python3 -I e2e/fake_s3.py --port ${PORTS.s3} --origins ${WEB},${PROD},${NODEMO}`,
+      url: `${S3}/__health`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
       // TT_E2E_SERVER_BIN：已经 go build 好的二进制（本地并行跑多个 agent 时用，配合 TT_E2E_PORT_OFFSET 换端口）。
       command: process.env.TT_E2E_SERVER_BIN ?? 'go run ./cmd/im-server',
       cwd: serverDir,
@@ -52,6 +59,15 @@ export default defineConfig({
         IM_ALLOWED_ORIGINS: `${WEB},${PROD},${NODEMO}`,
         IM_REGISTER_MODE: 'invite', // PRD-chat F-ACC-01：账号页面用 /admin/invites 发的邀请码
         IM_TEST_DISABLE_AUTH_LOCK: '1', // 用例共用一个 IP，真实限流在服务端 e2e（TC-ACC-02-04 等）
+        // 图片和文件（C2）：对象存储是上面的假 S3。凭证只是假 S3 的占位，不是真的密钥。
+        IM_FILES_ENABLED: '1',
+        IM_OBJSTORE_ENDPOINT: S3,
+        IM_OBJSTORE_REGION: 'us-east-1',
+        IM_OBJSTORE_BUCKET: 'chat',
+        IM_OBJSTORE_PUBLIC_BUCKET: 'avatars',
+        IM_OBJSTORE_PUBLIC_BASE_URL: `${S3}/avatars`,
+        IM_OBJSTORE_ACCESS_KEY: 'web-e2e-fake-s3',
+        IM_OBJSTORE_SECRET_KEY: 'web-e2e-fake-s3-not-a-secret',
       },
     },
     {
@@ -60,7 +76,7 @@ export default defineConfig({
       url: PROD,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { TIANTING_SERVER: SERVER },
+      env: { TIANTING_SERVER: SERVER, VITE_STORAGE_ORIGINS: S3 },
     },
     {
       // 生产开关的构建（VITE_DEMO_LOGIN=false，TC-ACC-07-07）：服务端说开也不能显示演示表单。输出到临时目录，不碰 dist。
@@ -68,7 +84,7 @@ export default defineConfig({
       url: NODEMO,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { TIANTING_SERVER: SERVER, VITE_DEMO_LOGIN: 'false' },
+      env: { TIANTING_SERVER: SERVER, VITE_DEMO_LOGIN: 'false', VITE_STORAGE_ORIGINS: S3 },
     },
     {
       command: `npx vite --host 127.0.0.1 --port ${PORTS.web} --strictPort`,

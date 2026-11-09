@@ -1,5 +1,5 @@
 import { countCodePoints, MAX_TEXT_LENGTH } from '@tianting/sdk';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { useIm } from '../im/ImProvider';
 import { EMOJI } from '../lib/emoji';
@@ -13,7 +13,19 @@ const COMPOSITION_GRACE_MS = 50;
  * Enter 发送、Shift+Enter 换行；输入法组字期间以及 compositionend 后 50ms 内的 Enter 不发送（R-UI-15）。
  * 进入时取走这个会话的草稿，离开时把没发出去的内容存回去（F-UI-24）。
  */
-export function Composer({ convId, onSend }: { convId: string; onSend: (text: string) => boolean }) {
+export function Composer({
+  convId,
+  onSend,
+  attach,
+  onPasteFiles,
+}: {
+  convId: string;
+  onSend: (text: string) => boolean;
+  /** 输入区的"+"（PRD-chat 第 13.3 节）；`features.files` 关闭时不传。 */
+  attach?: ReactNode;
+  /** 粘贴的是文件（截图等）时交给它（F-FILE-02，第 13.2 节"粘贴"）；不传时按浏览器默认处理。 */
+  onPasteFiles?: (files: File[]) => void;
+}) {
   const { drafts } = useIm();
   const [text, setText] = useState(() => drafts.get(convId) ?? '');
   const [emoji, setEmoji] = useState(false);
@@ -84,6 +96,7 @@ export function Composer({ convId, onSend }: { convId: string; onSend: (text: st
       }}
     >
       <div className="tt-composer-row">
+        {attach}
         <button
           type="button"
           className="tt-icon-btn tt-emoji-btn"
@@ -102,6 +115,12 @@ export function Composer({ convId, onSend }: { convId: string; onSend: (text: st
           enterKeyHint="send"
           aria-label="输入消息"
           onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            const files = [...(e.clipboardData?.files ?? [])];
+            if (!onPasteFiles || files.length === 0) return;
+            e.preventDefault(); // 只要文件；同时带的文字（比如文件名）不插进输入框
+            onPasteFiles(files);
+          }}
           onClick={() => setEmoji(false)}
           onCompositionEnd={() => (composedAt.current = performance.now())}
           onKeyDown={(e) => {

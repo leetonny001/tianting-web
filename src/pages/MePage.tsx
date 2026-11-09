@@ -5,7 +5,7 @@ import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { Icon } from '../components/Icon';
 import { useIm, useSelf } from '../im/ImProvider';
-import { useNotices, useOfficial, useProfile } from '../im/hooks';
+import { useAttachments, useNotices, useOfficial, useProfile } from '../im/hooks';
 import { copyText } from '../lib/clipboard';
 
 /** 我（PRD-ui F-UI-15）：账号会话可以改昵称（PRD-chat F-ACC-06，头像随 C2），演示会话不提供。显示名来自 users 缓存里的自己。 */
@@ -16,13 +16,14 @@ export function MePage() {
   const profile = useProfile(userId);
   const official = useOfficial();
   const { unseen } = useNotices();
+  const att = useAttachments();
   const name = profile?.nickname || userId;
   return (
     <div className="tt-page">
       <TopBar title="我" />
       <div className="tt-scroll">
         <div className="tt-card tt-info-head">
-          <Avatar id={userId} name={name} size={64} src={profile?.avatar} />
+          <Avatar id={userId} name={name} size={64} src={profile?.avatar} local={att?.ownAvatar} />
           <div className="tt-me-info">
             <div className="tt-info-name tt-large" data-testid="me-name">
               {name} {official && <OfficialTag />}

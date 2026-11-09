@@ -9,6 +9,7 @@ import { useToast } from '../components/Toast';
 import { TopBar } from '../components/TopBar';
 import { useClient, useIm, useSelf } from '../im/ImProvider';
 import {
+  useAttachments,
   useConnState,
   useConversations,
   useDisplayName,
@@ -24,11 +25,12 @@ import {
 import { copyText } from '../lib/clipboard';
 import { useEscape } from '../lib/focus';
 import { isWide } from '../lib/layout';
-import { GROUP_ALL_MUTED, MESSAGE_DELETED, messageFor, mutedText } from '../lib/errors';
+import { GROUP_ALL_MUTED, MESSAGE_DELETED, messageFor, mutedText, SOURCE_MISSING } from '../lib/errors';
 import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
+import { AttachButton, AttachmentError, FileBubble, ImageBubble, ImageViewer, useSendAttachments } from './Attach';
 import { Composer } from './Composer';
 
 const BOTTOM_SLACK = 100; // 距底部不超过 100px 算"在底部"（F-MSG-06 规则 5）
@@ -75,7 +77,14 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const retry = liveMessage(retryId ?? undefined);
   const menuMessage = liveMessage(menuAt?.id);
   const menu = menuAt && menuMessage ? { ...menuAt, m: menuMessage } : null;
-  const { drafts } = useIm();
+  const { drafts, knownConfig, attachments } = useIm();
+  // 图片、文件入口（第 13.3 节）：服务端开关 features.files 打开、这次登录配了文件接口才有。
+  const filesOn = !!knownConfig?.features?.files && !!attachments?.files;
+  const [viewer, setViewer] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const { send: sendFiles, dialog: fileDialog } = useSendAttachments(c, convId, () => {
+    atBottom.current = true;
+  });
   const mute = useMute(convId);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -190,8 +199,33 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   // 资料卡的申请来源（F-UI-14 规则 7）：从群进入为 group，从单聊进入为 conv。
   const userState: UserRouteState = type === 'group' ? { source: 'group', sourceRef: to } : { source: 'conv' };
 
+  const canSendFiles = filesOn && !probing && !blocked && !mute;
+  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes('Files');
+  // 删除失败的附件：没完成的上传顺便取消（DELETE，F-FILE-01 规则 6a）；文本照旧只删本地。
+  const removeFailed = (m: Message) =>
+    m.type === 'image' || m.type === 'file'
+      ? c.cancelUpload(convId, m.clientMsgId)
+      : c.removeFailed(convId, m.clientMsgId);
   return (
-    <div className="tt-page tt-chat">
+    <div
+      className={`tt-page tt-chat${dragging ? ' tt-chat-drop' : ''}`}
+      onDragOver={(e) => {
+        if (!canSendFiles || !hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (!dragging) setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!canSendFiles || !hasFiles(e)) return;
+        e.preventDefault();
+        setDragging(false);
+        sendFiles([...e.dataTransfer.files], 'auto');
+      }}
+      data-testid="chat-page"
+    >
       <TopBar
         title={
           <span className="tt-title-row" data-testid="chat-title">
@@ -254,6 +288,9 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 self={r.m.from === self}
                 showName={type === 'group' && r.m.from !== self}
                 userState={userState}
+                convId={convId}
+                onOpenImage={setViewer}
+                onCancel={() => c.cancelUpload(convId, r.m.clientMsgId)}
                 onRetry={() => setRetryId(r.m.clientMsgId)}
                 onMenu={(top, below, left) => setMenuAt({ id: r.m.clientMsgId, top, below, left })}
               />
@@ -313,6 +350,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
       ) : (
         <Composer
           convId={convId}
+          attach={canSendFiles ? <AttachButton onPick={sendFiles} /> : undefined}
+          onPasteFiles={canSendFiles ? (files) => sendFiles(files, 'auto') : undefined}
           onSend={(text) => {
             try {
               const r = c.send(convId, text);
@@ -330,18 +369,35 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           }}
         />
       )}
-      {retry && (
+      {retry && retry.error === 'sourceMissing' ? (
+        // 原文件已经不在（F-FILE-07 规则 4）：不能重发，只能删除。
         <Confirm
-          text="重发该消息？"
-          ok="重发"
-          testId="retry-dialog"
+          text={SOURCE_MISSING}
+          ok="删除"
+          danger
+          testId="source-missing-dialog"
           onCancel={() => setRetryId(null)}
           onOk={() => {
-            c.retry(convId, retry.clientMsgId);
+            removeFailed(retry);
             setRetryId(null);
           }}
         />
+      ) : (
+        retry && (
+          <Confirm
+            text="重发该消息？"
+            ok="重发"
+            testId="retry-dialog"
+            onCancel={() => setRetryId(null)}
+            onOk={() => {
+              c.retry(convId, retry.clientMsgId);
+              setRetryId(null);
+            }}
+          />
+        )
       )}
+      {fileDialog}
+      {viewer && <ImageViewer fileId={viewer} onClose={() => setViewer(null)} />}
       {menu && (
         <div className="tt-menu-layer" onClick={() => setMenuAt(null)} onContextMenu={(e) => e.preventDefault()}>
           <div
@@ -364,7 +420,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 复制
               </button>
             )}
-            {menu.m.status === 'failed' && (
+            {menu.m.status === 'failed' && menu.m.error !== 'sourceMissing' && (
               <button
                 role="menuitem"
                 onClick={() => {
@@ -379,7 +435,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
               <button
                 role="menuitem"
                 onClick={() => {
-                  c.removeFailed(convId, menu.m.clientMsgId); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
+                  removeFailed(menu.m); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
                   setMenuAt(null);
                 }}
                 data-testid="menu-delete"
@@ -468,6 +524,9 @@ function Bubble({
   self,
   showName,
   userState,
+  convId,
+  onOpenImage,
+  onCancel,
   onRetry,
   onMenu,
 }: {
@@ -475,6 +534,9 @@ function Bubble({
   self: boolean;
   showName: boolean;
   userState: UserRouteState;
+  convId: string;
+  onOpenImage: (fileId: string) => void;
+  onCancel: () => void;
   onRetry: () => void;
   onMenu: (top: number, below: boolean, left?: number) => void;
 }) {
@@ -482,12 +544,14 @@ function Bubble({
   const navigate = useNavigate();
   const senderName = useDisplayName(m.from);
   const sender = useProfile(m.from);
+  const attachment = m.type === 'image' || m.type === 'file';
   const supported = m.type === 'text';
   const hasMenu = supported || m.status === 'failed';
+  const failedItems = m.status === 'failed' ? (m.error === 'sourceMissing' ? 1 : 2) : 0;
   const open = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     const list = el.closest('.tt-messages')?.getBoundingClientRect();
-    const items = (supported ? 1 : 0) + (m.status === 'failed' ? 2 : 0);
+    const items = (supported ? 1 : 0) + failedItems;
     const height = items * MENU_ITEM_HEIGHT + MENU_PADDING;
     const below = !!list && r.top - list.top < height + 4;
     const top = below ? Math.min(r.bottom + 4, window.innerHeight - height - 4) : r.top - height - 4;
@@ -514,12 +578,16 @@ function Bubble({
         onClick={() => navigate(userPath(m.from), { state: userState })}
         data-testid="msg-avatar"
       >
-        <Avatar id={m.from} name={senderName} size={40} src={sender?.avatar} />
+        {self ? (
+          <SelfAvatar id={m.from} name={senderName} src={sender?.avatar} />
+        ) : (
+          <Avatar id={m.from} name={senderName} size={40} src={sender?.avatar} />
+        )}
       </button>
       <div className="tt-msg-body">
         {showName && <div className="tt-msg-name">{senderName}</div>}
         <div className="tt-msg-line">
-          {self && m.status !== 'sent' && (
+          {self && m.status !== 'sent' && (m.status === 'failed' || !attachment) && (
             <span className="tt-msg-status">
               {m.status === 'failed' ? (
                 <button
@@ -538,7 +606,7 @@ function Bubble({
             </span>
           )}
           <div
-            className={`tt-bubble${supported ? '' : ' tt-bubble-unsupported'}`}
+            className={`tt-bubble${attachment ? ' tt-bubble-att' : supported ? '' : ' tt-bubble-unsupported'}`}
             onPointerDown={(e) => {
               if (!hasMenu || isWide()) return; // 宽屏用右键（F-UI-09 规则 1），按住鼠标是选择文字
               const el = e.currentTarget;
@@ -555,12 +623,27 @@ function Bubble({
               if (hasMenu) open(e.currentTarget);
             }}
           >
-            {supported ? m.body.text : '[暂不支持的消息]'}
+            {supported ? (
+              m.body.text
+            ) : m.type === 'image' ? (
+              <ImageBubble m={m} onCancel={onCancel} onOpen={onOpenImage} />
+            ) : m.type === 'file' ? (
+              <FileBubble m={m} self={self} convId={convId} onCancel={onCancel} />
+            ) : (
+              '[暂不支持的消息]' // 不认识的类型（F-FILE-02 规则 8 的老版本说法，留给以后的新类型）
+            )}
           </div>
         </div>
+        <AttachmentError m={m} />
       </div>
     </div>
   );
+}
+
+/** 自己的头像：刚换过的用这次登录里上传的那张（F-ACC-06，问题 H13）。 */
+function SelfAvatar({ id, name, src }: { id: string; name: string; src?: string }) {
+  const att = useAttachments();
+  return <Avatar id={id} name={name} size={40} src={src} local={att?.ownAvatar} />;
 }
 
 /** 路由参数里的会话 ID 是 URL 编码的（单聊 ID 含 :，PRD-ui 3.2 节）；解码失败按不合法处理。 */

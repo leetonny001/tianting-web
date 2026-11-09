@@ -360,3 +360,14 @@ export function useDisplayName(userId: string): string {
   useProfile(userId);
   return c.displayName(userId);
 }
+
+// ---- 图片和文件（PRD-chat F-FILE-02、03、07） ----
+
+const noop = () => () => {};
+
+/** 这次登录的附件状态；演示的旧客户端或测试里没有时为 null。 */
+export function useAttachments() {
+  const { attachments } = useIm();
+  useSyncExternalStore(attachments?.subscribe ?? noop, () => attachments?.version ?? 0);
+  return attachments;
+}

@@ -1,4 +1,5 @@
 import type { Conversation } from '@tianting/sdk';
+import { attachmentSummary } from '../lib/media';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
@@ -162,7 +163,9 @@ const summaryText = (c: Conversation) => {
   if (!m) return '';
   if (m.deleted) return MESSAGE_DELETED;
   // 提示消息用服务端摘要（F-UI-40 规则 3），不加发送者前缀。
-  return m.type === 'text' || m.type === 'tip' ? (m.text ?? '') : '[暂不支持的消息]';
+  if (m.type === 'text' || m.type === 'tip') return m.text ?? '';
+  // 图片、文件只显示类型，不带文件名（F-FILE-02 规则 5、F-FILE-03 规则 5：LastMsg 本来就没有文件名）。
+  return attachmentSummary(m.type) ?? '[暂不支持的消息]';
 };
 
 /** 群摘要的发送者前缀（PRD-ui F-UI-04 规则 5）：显示名未就绪时先显示 userId，就绪后替换。 */

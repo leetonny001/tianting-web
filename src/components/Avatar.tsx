@@ -11,15 +11,19 @@ export function Avatar({
   size,
   group = false,
   src,
+  local,
 }: {
   id: string;
   name: string;
   size: number;
   group?: boolean;
   src?: string;
+  /** 自己刚换的头像（blob: 地址，只在这次登录里，F-ACC-06）：优先于 src。 */
+  local?: string;
 }) {
   const [failed, setFailed] = useState('');
-  const image = src?.startsWith('https://') && failed !== src ? src : '';
+  const image =
+    local?.startsWith('blob:') && failed !== local ? local : src?.startsWith('https://') && failed !== src ? src : '';
   return (
     <span
       className={`tt-avatar${group ? ' tt-avatar-group' : ''}`}
@@ -39,6 +43,7 @@ export function Avatar({
           alt=""
           referrerPolicy="no-referrer"
           loading="lazy"
+          data-testid="avatar-img"
           onError={() => setFailed(image)}
         />
       ) : (

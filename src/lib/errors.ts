@@ -3,6 +3,9 @@ import { formatDateTime, formatMonthDayTime } from './time';
 
 // 错误文案（PRD-core 第 5 节文案表、PRD-ui F-UI-19）：先查"命令 + 码"，没有单独列出的用该码的默认文案；
 // 从不展示服务端的 msg。errors.json 新增 ws 通道的码时，必须在这里补上文案（errors.test.ts 自动检查）。
+/** 原文件不在了，只能删除这条消息（F-FILE-07 规则 4，AC-FILE-07-10）。 */
+export const SOURCE_MISSING = '原文件已不可用，请重新选择';
+
 const BY_CODE: Record<number, string> = {
   4000: '请求出错',
   4001: '当前版本过低，请刷新页面',
@@ -32,6 +35,8 @@ const BY_CODE: Record<number, string> = {
   4048: '文件不存在或已过期',
   4090: '请求出错',
   4091: '你们已经是朋友了',
+  // 4096：文件未完成上传或已被清理（F-FILE-07 规则 4）。SDK 有源就重新上传，走到界面上的只有没有源的情况。
+  4096: SOURCE_MISSING,
   4130: '请求出错',
   4131: '请求出错',
   4132: '你的好友数量已达上限',

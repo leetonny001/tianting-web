@@ -10,15 +10,39 @@ const proxy = {
   '/ws': { target: server.replace(/^http/, 'ws'), ws: true },
 };
 
+/**
+ * 对象存储的地址（PRD-chat 第 13.2 节、NF-UI-14、AC-FILE-03-10）：构建变量 VITE_STORAGE_ORIGINS，空格分隔的源，
+ * 例如 "https://files.example.com"。上传（XHR PUT）和取图片（fetch）都直连它，所以只把这些具体的源加进 connect-src，
+ * 不能放宽成 https: 或 *。只接受 https 源；http 只给本机测试（127.0.0.1、localhost）。
+ */
+export function storageOrigins(raw: string | undefined): string[] {
+  const out: string[] = [];
+  for (const v of (raw ?? '').split(/\s+/).filter(Boolean)) {
+    let u: URL;
+    try {
+      u = new URL(v);
+    } catch {
+      throw new Error(`VITE_STORAGE_ORIGINS: not a URL: ${v}`);
+    }
+    const local = u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost');
+    if ((u.protocol !== 'https:' && !local) || u.origin !== v.replace(/\/$/, '') || u.hostname.includes('*')) {
+      throw new Error(`VITE_STORAGE_ORIGINS: must be exact origins like https://files.example.com, got ${v}`);
+    }
+    out.push(u.origin);
+  }
+  return out;
+}
+
 // 生产构建的 CSP（PRD-ui NF-UI-14、FE-246）。开发服务器会注入内联脚本（React 热更新），所以只在构建时加。
 // frame-ancestors 只能通过响应头设置，见 deploy/nginx.conf。
+// img-src 加 blob:：图片先取成 blob 再显示（F-FILE-04 规则 5 的缓存、F-FILE-02 规则 3 的像素上限，第 13.2 节）。
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self'",
   "style-src-attr 'unsafe-inline'", // 头像背景色等少量 style 属性
-  "img-src 'self' https: data:",
-  "connect-src 'self'",
+  "img-src 'self' https: data: blob:",
+  ["connect-src 'self'", ...storageOrigins(process.env.VITE_STORAGE_ORIGINS)].join(' '),
   "base-uri 'none'",
   "form-action 'self'",
   "object-src 'none'",

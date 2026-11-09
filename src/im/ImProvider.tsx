@@ -1,7 +1,10 @@
 import {
+  FileClient,
   fnv1a32,
   IMClient,
   lineageOf,
+  StaticTokenAuth,
+  XhrUploadTransport,
   type AccountClient,
   type AccountConfig,
   type AuthResult,
@@ -13,13 +16,25 @@ import { clearSession, loadAccountSession, loadSession, saveSession, type Sessio
 import { createTabGuard, type TabGuard } from '../lib/tabGuard';
 import { getPref, removePref, setPref } from '../lib/uiPrefs';
 import { createAccountRuntime, type AccountDeps, type AccountRuntime } from './account';
+import { Attachments } from './attachments';
 import { DraftStore } from './drafts';
 import { NoticeStore, noticeSeenKey } from './notices';
 
-/** 测试注入：创建 SDK 客户端的方式（组件测试用 FakeTransport）。 */
-export type ClientFactory = () => IMClient;
+/**
+ * 测试注入：创建 SDK 客户端的方式（组件测试用 FakeTransport）。files 是这次登录的文件接口（PRD-chat 第 13.1 节），
+ * 要用图片和文件就传给 IMClient；不传时"+"不显示。
+ */
+export type ClientFactory = (files: FileClient) => IMClient;
 
-const defaultFactory: ClientFactory = () => new IMClient({ url: wsURL(), platform: 'web' });
+const defaultFactory: ClientFactory = (files) => new IMClient({ url: wsURL(), platform: 'web', files });
+
+/** 测试注入：文件接口的上传方式等（组件测试用假的上传）。 */
+export type FilesFactory = (auth: FileClientAuth) => FileClient;
+type FileClientAuth = ConstructorParameters<typeof FileClient>[0]['auth'];
+
+// 浏览器用 XMLHttpRequest 上传（第 13.2 节：要进度）。预签名地址和文件名不进日志（SDK 默认不打日志）。
+const defaultFiles: FilesFactory = (auth) =>
+  new FileClient({ auth, upload: typeof XMLHttpRequest === 'function' ? new XhrUploadTransport() : undefined });
 
 /** 登录状态。token 不放进来：账号会话的 token 只在 SDK 和 sessionStorage，页面用不到。 */
 export interface UiSession {
@@ -34,6 +49,8 @@ export type ConfigState = { status: 'loading' | 'failed'; value: null } | { stat
 
 interface ImContextValue {
   client: IMClient | null;
+  /** 图片、文件的界面状态（缓存、进度、预览），和 client 同生共死。 */
+  attachments: Attachments | null;
   session: UiSession | null;
   /** 账号接口（HTTP）。一直存在：登录页要用它拉配置和登录。 */
   account: AccountClient;
@@ -66,7 +83,9 @@ interface ImContextValue {
 
 const ImContext = createContext<ImContextValue | null>(null);
 
-type SessionState = Pick<ImContextValue, 'client' | 'session' | 'drafts' | 'notices'> & { demoToken?: string };
+type SessionState = Pick<ImContextValue, 'client' | 'session' | 'drafts' | 'notices' | 'attachments'> & {
+  demoToken?: string;
+};
 
 const CONFIG_KEY = 'ui.config';
 
@@ -84,24 +103,43 @@ export const getPrivacyAck = (userId: string) => getPref(privacyAckKey(userId));
 export const setPrivacyAck = (userId: string, version: string) => setPref(privacyAckKey(userId), version);
 
 function signedOut(): SessionState {
-  return { client: null, session: null, notices: null, drafts: new DraftStore() };
+  return { client: null, session: null, notices: null, attachments: null, drafts: new DraftStore() };
 }
 
-function signedIn(session: UiSession, factory: ClientFactory, demoToken?: string): SessionState {
-  const client = factory();
-  return { client, session, demoToken, notices: new NoticeStore(client, session.userId), drafts: new DraftStore() };
+/** auth：账号会话用 AccountClient（4011 按规则 7 处理），演示会话用固定 token（StaticTokenAuth）。 */
+function signedIn(
+  session: UiSession,
+  factory: ClientFactory,
+  filesFactory: FilesFactory,
+  auth: FileClientAuth,
+  demoToken?: string,
+): SessionState {
+  const files = filesFactory(auth);
+  const client = factory(files);
+  return {
+    client,
+    session,
+    demoToken,
+    notices: new NoticeStore(client, session.userId),
+    attachments: new Attachments(client, files),
+    drafts: new DraftStore(),
+  };
 }
+
+const demoAuth = (token: string) => new StaticTokenAuth(window.location.origin, token);
 
 export function ImProvider({
   children,
   factory = defaultFactory,
   accountDeps,
   guardFactory = createTabGuard,
+  filesFactory = defaultFiles,
 }: {
   children: ReactNode;
   factory?: ClientFactory;
   accountDeps?: AccountDeps;
   guardFactory?: () => TabGuard;
+  filesFactory?: FilesFactory;
 }) {
   const [guard] = useState(guardFactory);
   const [runtime, setRuntime] = useState<AccountRuntime>(() => createAccountRuntime(guard, accountDeps));
@@ -110,7 +148,9 @@ export function ImProvider({
   // 这里只创建客户端，连接放在 effect 里：StrictMode 会把初始化函数执行两次，被丢弃的那个客户端不能建立连接。
   const [state, setState] = useState<SessionState>(() => {
     const s = loadSession();
-    return s ? signedIn({ userId: s.userId, mode: 'demo' }, factory, s.token) : signedOut();
+    return s
+      ? signedIn({ userId: s.userId, mode: 'demo' }, factory, filesFactory, demoAuth(s.token), s.token)
+      : signedOut();
   });
   // 存储里有账号会话：先确认这个标签页是唯一的，再把 refresh token 交给 SDK。结果出来之前什么都不显示，路由守卫不能先跳走。
   const [checking, setChecking] = useState(() => loadAccountSession() !== null);
@@ -128,9 +168,9 @@ export function ImProvider({
       const s = a.session;
       if (!s) return; // 会话已经结束：不能 connect（问题 K7），结束事件会弹窗
       setFatal(null);
-      setState(signedIn({ userId: s.userId, mode: 'account' }, factory));
+      setState(signedIn({ userId: s.userId, mode: 'account' }, factory, filesFactory, a));
     },
-    [factory],
+    [factory, filesFactory],
   );
 
   // 启动：多标签页互斥（F-ACC-03 规则 9）。StrictMode 下 effect 会执行两次，只做一次：锁不能放了再抢。
@@ -234,9 +274,9 @@ export function ImProvider({
       saveSession(s);
       setFatal(null);
       setTabConflict(false);
-      setState(signedIn({ userId: s.userId, mode: 'demo' }, factory, s.token));
+      setState(signedIn({ userId: s.userId, mode: 'demo' }, factory, filesFactory, demoAuth(s.token), s.token));
     },
-    [factory],
+    [factory, filesFactory],
   );
 
   const accountAuthed = useCallback(
@@ -270,8 +310,9 @@ export function ImProvider({
   const logout = useCallback(
     (opts?: { keepNoticeSeen?: boolean }) => {
       const { state: st, runtime: rt } = current.current;
-      const { client: c, session: s, notices } = st;
+      const { client: c, session: s, notices, attachments } = st;
       notices?.detach();
+      attachments?.dispose();
       if (s && !opts?.keepNoticeSeen) removePref(noticeSeenKey(s.userId));
       clearSession();
       guard.release();
@@ -293,6 +334,7 @@ export function ImProvider({
   const value = useMemo<ImContextValue>(
     () => ({
       client: state.client,
+      attachments: state.attachments,
       session: state.session,
       drafts: state.drafts,
       notices: state.notices,
