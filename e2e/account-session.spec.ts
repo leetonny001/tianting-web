@@ -25,8 +25,11 @@ const SIX_HOURS = 6 * 3_600_000;
 async function sendTo(page: Page, conv: string, text: string) {
   await page.goto(chatUrl(conv));
   await page.getByTestId('composer-input').fill(text);
-  await page.getByTestId('composer-input').press('Enter');
-  await expect(page.getByTestId('message').last()).toHaveAttribute('data-status', 'sent');
+  // 刷新页面后要先连上（可能还要先刷新）。连上之前按回车：内容保留，提示"正在连接"（H11），和用户再按一次一样。
+  await expect(async () => {
+    await page.getByTestId('composer-input').press('Enter');
+    await expect(page.getByTestId('message').last()).toHaveAttribute('data-status', 'sent', { timeout: 500 });
+  }).toPass({ timeout: 10_000 });
 }
 
 /** 页面 P1 上记录所有 HTTP 响应的状态码，看有没有 401。 */
