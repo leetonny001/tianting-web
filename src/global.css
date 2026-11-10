@@ -1436,3 +1436,93 @@ a {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* 撤回、引用、@（PRD-chat C4，第 13.3、13.4 节）：颜色都用已有 token，深色模式跟着 token 变 */
+.tt-quote {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--tt-space-1);
+  padding: 2px var(--tt-space-2);
+  border-left: 3px solid currentColor;
+  border-radius: var(--tt-radius-sm);
+  color: inherit;
+  font-size: var(--tt-font-caption);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tt-bubble-att .tt-quote {
+  margin: var(--tt-space-2) var(--tt-space-2) 0;
+  width: auto;
+}
+.tt-quote-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-2);
+  margin-bottom: var(--tt-space-2);
+  padding-left: var(--tt-space-3);
+  border-left: 3px solid var(--tt-color-brand);
+  border-radius: var(--tt-radius-sm);
+  background: var(--tt-color-bg);
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-small);
+}
+.tt-quote-bar-text {
+  flex: 1;
+  min-width: 0;
+}
+.tt-highlight,
+.tt-highlight .tt-bubble {
+  box-shadow: 0 0 0 3px var(--tt-color-brand);
+}
+.tt-msg.tt-highlight {
+  box-shadow: none;
+  background: var(--tt-color-surface-selected);
+  border-radius: var(--tt-radius-md);
+}
+.tt-bubble-mention {
+  box-shadow: 0 0 0 2px var(--tt-color-brand);
+}
+.tt-bubble:focus-visible {
+  outline: 2px solid var(--tt-color-brand);
+  outline-offset: 2px;
+}
+.tt-mention-pill {
+  top: calc(var(--tt-size-topbar) + var(--tt-space-3));
+  bottom: auto;
+}
+.tt-mention-list {
+  max-height: 50vh;
+  margin-top: var(--tt-space-2);
+  overflow-y: auto;
+}
+.tt-mention-row {
+  width: 100%;
+  text-align: left;
+}
+.tt-mention-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tt-mention-id {
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-caption);
+}
+.tt-mention-all-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--tt-radius-full);
+  background: var(--tt-color-brand-fill);
+  color: var(--tt-color-on-brand);
+  font-size: var(--tt-font-title);
+}
+.tt-mention-state {
+  display: block;
+  padding: var(--tt-space-4);
+  color: var(--tt-color-text-secondary);
+  text-align: center;
+}

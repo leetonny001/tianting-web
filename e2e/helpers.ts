@@ -182,6 +182,15 @@ export async function fakeConfig(page: Page, over: Record<string, unknown>) {
   );
 }
 
+/** 让 GET /v1/config 的 features.msgActions 为 false（其余照真实服务端）：C4 开关关闭时的页面（AC-UI-09-1）。 */
+export async function msgActionsOff(page: Page) {
+  await page.route('**/v1/config', async (route) => {
+    const res = await route.fetch();
+    const json = (await res.json()) as { features?: Record<string, unknown> };
+    await route.fulfill({ response: res, json: { ...json, features: { ...json.features, msgActions: false } } });
+  });
+}
+
 export const storedSession = (page: Page) => page.evaluate(() => sessionStorage.getItem('tt.session'));
 
 export const dateOf = (ms: number) => {

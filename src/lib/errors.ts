@@ -30,6 +30,7 @@ const BY_CODE: Record<number, string> = {
   4041: '请求出错',
   4042: '用户不存在',
   4043: '群聊不存在或已解散',
+  4044: '消息不存在或已过期',
   4045: '该申请已过期',
   4046: '对方已不在群里',
   4048: '文件不存在或已过期',
@@ -37,6 +38,8 @@ const BY_CODE: Record<number, string> = {
   4091: '你们已经是朋友了',
   // 4096：文件未完成上传或已被清理（F-FILE-07 规则 4）。SDK 有源就重新上传，走到界面上的只有没有源的情况。
   4096: SOURCE_MISSING,
+  // 4097：撤回超过时限（C4）。recall 按 details.windowSeconds 选"2 分钟""7 天"（SDK 的 messageFor），这里是没有时限信息时的兜底。
+  4097: '发送时间超过 2 分钟，无法撤回',
   4130: '请求出错',
   4131: '请求出错',
   4132: '你的好友数量已达上限',
@@ -47,6 +50,7 @@ const BY_CODE: Record<number, string> = {
   4137: '对方回复之前，发送的消息数量已达上限',
   4290: '发送太频繁，请稍后再试',
   4292: '今天的次数已用完，明天再试',
+  4293: '@所有人次数已用完',
   5000: '服务异常，请稍后重试',
   5030: '服务异常，请稍后重试',
 };
@@ -63,15 +67,22 @@ const BY_CMD: Record<string, Record<number, string>> = {
 export const LOG_ONLY = new Set([4000, 4002, 4003, 4007, 4008]);
 
 /** 按"命令 + 错误码"取文案；不认识的 4xxx 提示"请求出错"，5xxx 提示"服务异常，请稍后重试"（C-09）。 */
-export function messageFor(code: number, cmd?: string, ctx?: { strangerMsgLimit?: number; name?: string }): string {
+export function messageFor(
+  code: number,
+  cmd?: string,
+  ctx?: { strangerMsgLimit?: number; name?: string; windowSeconds?: number },
+): string {
   const special = cmd ? (BY_CMD[cmd]?.[code] ?? commandMessage(cmd, code, ctx)) : undefined;
   if (special) return special;
   if (BY_CODE[code]) return BY_CODE[code];
   return code >= 5000 ? '服务异常，请稍后重试' : '请求出错';
 }
 
-/** 被删除的消息和会话摘要（PRD-core 第 5 节）。 */
+/** 被删除的消息和会话摘要（PRD-core 第 5 节）：只用于后台删除，撤回按 F-RCL-02 规则 1a 的表（SDK recallText）。 */
 export const MESSAGE_DELETED = '该消息已被删除';
+
+/** 正在看、正在下载的那条被撤回了（AC-RCL-03-8）。 */
+export const MESSAGE_RECALLED = '该消息已被撤回';
 
 /** 封禁（4034、kicked.reason = suspended，PRD-core 第 5 节、PRD-ui F-UI-18）：永久（null）或缺字段时没有解封时间。 */
 export function bannedText(until: number | null | undefined): string {

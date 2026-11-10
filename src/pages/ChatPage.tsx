@@ -1,5 +1,24 @@
-import { ConvIdError, IMError, NotConnectedError, parseConvIdStrict, tipText, type Message } from '@tianting/sdk';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import {
+  ConvIdError,
+  IMError,
+  NotConnectedError,
+  parseConvIdStrict,
+  quoteLabel,
+  tipText,
+  type Message,
+  type QuoteView,
+} from '@tianting/sdk';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { Avatar, OfficialTag } from '../components/Avatar';
 import { ConnBanner } from '../components/ConnBanner';
@@ -25,15 +44,34 @@ import {
 import { copyText } from '../lib/clipboard';
 import { useEscape } from '../lib/focus';
 import { isWide } from '../lib/layout';
-import { GROUP_ALL_MUTED, MESSAGE_DELETED, messageFor, mutedText, SOURCE_MISSING } from '../lib/errors';
+import {
+  GROUP_ALL_MUTED,
+  MESSAGE_DELETED,
+  MESSAGE_RECALLED,
+  messageFor,
+  mutedText,
+  SOURCE_MISSING,
+} from '../lib/errors';
 import { noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
 import { AttachButton, AttachmentError, FileBubble, ImageBubble, ImageViewer, useSendAttachments } from './Attach';
-import { Composer } from './Composer';
+import { Composer, type ComposerHandle } from './Composer';
 
 const BOTTOM_SLACK = 100; // 距底部不超过 100px 算"在底部"（F-MSG-06 规则 5）
+const QUOTE_JUMP_MAX = 200; // 引用跳转：距已加载范围 200 条以内才翻页（F-QUO-02 规则 5，问题 20 按 seq 差算）
+const HIGHLIGHT_MS = 2000;
+
+/** 消息菜单项（PRD-ui F-UI-09 规则 3，PRD-chat 第 13.3 节）。举报随 C6。 */
+type MenuItem = 'copy' | 'quote' | 'recall' | 'retry' | 'delete';
+const MENU_TEXT: Record<MenuItem, string> = {
+  copy: '复制',
+  quote: '引用',
+  recall: '撤回',
+  retry: '重发',
+  delete: '删除',
+};
 
 /** 聊天页（PRD-ui F-UI-06～F-UI-10）。路由里的会话 ID 先严格解析（G-UI-03），不合法回到会话列表。 */
 export function ChatPage() {
@@ -68,8 +106,25 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const [newCount, setNewCount] = useState(0);
   // 只记 clientMsgId，渲染时从最新列表取：打开着菜单时消息被删除，这里不能留着一份原文（F-UI-42）。
   const [retryId, setRetryId] = useState<string | null>(null);
-  const [menuAt, setMenuAt] = useState<{ id: string; top: number; below: boolean; left?: number } | null>(null);
-  useEscape(menuAt !== null, () => setMenuAt(null));
+  // items 是打开时算好的：菜单开着的时候过了撤回时限，"撤回"还在，点了按服务端 4097 提示（AC-RCL-01-8）。
+  const [menuAt, setMenuAt] = useState<{
+    id: string;
+    top: number;
+    below: boolean;
+    left?: number;
+    items: MenuItem[];
+    opener: HTMLElement;
+  } | null>(null);
+  const closeMenu = useCallback(() => {
+    setMenuAt((cur) => {
+      // 键盘打开的菜单关掉后焦点回到气泡（AC-CHAT-90-9 的键盘走查）
+      if (cur && (document.activeElement === document.body || document.activeElement?.closest('[role="menu"]'))) {
+        cur.opener.focus();
+      }
+      return null;
+    });
+  }, []);
+  useEscape(menuAt !== null, closeMenu);
   const liveMessage = (id: string | undefined) => {
     const m = id === undefined ? undefined : messages.find((x) => x.clientMsgId === id);
     return m && !m.deleted ? m : null;
@@ -80,7 +135,16 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const { drafts, knownConfig, attachments } = useIm();
   // 图片、文件入口（第 13.3 节）：服务端开关 features.files 打开、这次登录配了文件接口才有。
   const filesOn = !!knownConfig?.features?.files && !!attachments?.files;
-  const [viewer, setViewer] = useState<string | null>(null);
+  // 撤回、引用、@（C4）：GET /v1/config 的 features.msgActions（IM_MSG_ACTIONS_ENABLED）打开才有（PRD-ui F-UI-09 规则 4）。
+  // sdk-ts 的 AccountConfig 还没有这个字段（问题 31），这里按服务端的 JSON 读。
+  const actionsOn = !!(knownConfig?.features as { msgActions?: boolean } | undefined)?.msgActions;
+  const composer = useRef<ComposerHandle>(null);
+  const [viewer, setViewer] = useState<{ fileId: string; id: string } | null>(null);
+  const [highlight, setHighlight] = useState<number | null>(null);
+  const [jump, setJump] = useState<number | null>(null);
+  // "有人@我"（F-MEN-03 规则 3）：打开会话时记下第一条提及的 seq（读到最新后服务端就清零了）。
+  const [mentionAt, setMentionAt] = useState<number | null>(null);
+  const mentionTaken = useRef(false);
   const [dragging, setDragging] = useState(false);
   const { send: sendFiles, dialog: fileDialog } = useSendAttachments(c, convId, () => {
     atBottom.current = true;
@@ -164,6 +228,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   }
 
   // 新消息：在底部时自动滚到底，否则累计"↓ N 条新消息"。历史加载后保持可视位置。
+  // 跳转（引用、"有人@我"）的滚动在下一个 effect，排在这个后面。
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -181,6 +246,118 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     }
     prevLen.current = messages.length;
   }, [messages, self]);
+
+  // 跳到某条消息：滚到中间并高亮（AC-QUO-02-3、AC-MEN-03-6）。
+  useLayoutEffect(() => {
+    if (jump === null) return;
+    const el = scroller.current?.querySelector<HTMLElement>(`[data-seq="${jump}"]`);
+    if (!el) return;
+    el.scrollIntoView?.({ block: 'center' });
+    setHighlight(jump);
+    setJump(null);
+  }, [jump, messages]);
+  useEffect(() => {
+    if (highlight === null) return;
+    const t = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [highlight]);
+
+  /**
+   * 跳到 seq（F-QUO-02 规则 5）：已加载的直接跳；更早的，距已加载范围 limit 条以内向上翻页再跳（已加载范围保持连续），
+   * 更远的提示"消息太早，请翻页查看"；拉不到提示"消息不存在"。limit 为 Infinity 时一页页翻到为止（"有人@我"）。
+   */
+  async function jumpTo(seq: number | undefined, limit: number) {
+    if (seq === undefined) return toast('消息不存在');
+    const has = (list: Message[]) => list.some((m) => m.seq === seq);
+    if (has(c.messages(convId))) return setJump(seq);
+    const oldest = () => Math.min(...c.messages(convId).map((m) => m.seq ?? Infinity));
+    if (seq > oldest()) return toast('消息不存在'); // 在已加载范围里却没有（不该发生）
+    if (oldest() - seq > limit) return toast('消息太早，请翻页查看');
+    const el = scroller.current;
+    try {
+      while (!has(c.messages(convId))) {
+        const gap = oldest() - seq;
+        if (!(gap > 0)) break;
+        anchor.current = el ? el.scrollHeight - el.scrollTop : null;
+        setHistory('loading');
+        const more = await c.loadHistory(convId, Math.min(QUOTE_JUMP_MAX, gap));
+        setHistory(more ? 'idle' : 'end');
+        if (!more) break;
+      }
+    } catch {
+      setHistory('error');
+      anchor.current = null;
+    }
+    if (has(c.messages(convId))) setJump(seq);
+    else toast('消息不存在');
+  }
+
+  // 记下第一条提及（会话列表到了以后只取一次）。
+  useEffect(() => {
+    if (mentionTaken.current || !conv) return;
+    mentionTaken.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 会话列表是 SDK 事件带来的，只在第一次到达时取一次
+    if ((conv.mentionUnread ?? 0) > 0 && conv.firstMentionSeq !== undefined) setMentionAt(conv.firstMentionSeq);
+  }, [conv]);
+  // 那条在视口里了就不再显示按钮。
+  const mentionInView = useCallback(() => {
+    const list = scroller.current;
+    if (mentionAt === null || !list) return false;
+    const el = list.querySelector<HTMLElement>(`[data-seq="${mentionAt}"]`);
+    if (!el) return false;
+    const a = el.getBoundingClientRect();
+    const b = list.getBoundingClientRect();
+    return a.height > 0 && a.bottom > b.top && a.top < b.bottom;
+  }, [mentionAt]);
+  useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 量过 DOM 才知道那条在不在视口里
+    if (mentionInView()) setMentionAt(null);
+  }, [messages, mentionInView]);
+
+  // 发送失败的提示（4293 "@所有人次数已用完"、4040 引用不可用等）由 App 统一弹一次（F-UI-08 规则 3），这里不重复。
+
+  // 正在全屏看的图片被撤回、删除：退出全屏并提示（AC-RCL-03-8）。
+  const viewing = viewer ? messages.find((x) => x.clientMsgId === viewer.id) : undefined;
+  useEffect(() => {
+    if (!viewer || !viewing?.deleted) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 消息状态是外部来的（SDK 事件），跟着关掉全屏
+    setViewer(null);
+    toast(viewing.recalled ? MESSAGE_RECALLED : MESSAGE_DELETED);
+  }, [viewer, viewing, toast]);
+
+  /** 菜单项（F-UI-09 规则 3～5）：C4 开关关时只有"复制"和失败消息的两项；开时按 SDK 的 messageActions。 */
+  const menuItems = (m: Message): MenuItem[] => {
+    const out: MenuItem[] = actionsOn
+      ? c.messageActions(m, conv?.myRole)
+      : !m.deleted && m.type === 'text'
+        ? ['copy']
+        : [];
+    if (m.status === 'failed' && m.error !== 'sourceMissing') out.push('retry');
+    if (m.status === 'failed') out.push('delete');
+    return out;
+  };
+
+  async function act(item: MenuItem, m: Message) {
+    closeMenu();
+    if (item === 'copy') {
+      const ok = await copyText(m.body.text ?? '');
+      toast(ok ? '已复制' : '复制失败，请长按文字手动复制');
+    } else if (item === 'retry') {
+      c.retry(convId, m.clientMsgId); // 菜单里的"重发"不再二次确认（F-UI-09 规则 3）
+    } else if (item === 'delete') {
+      removeFailed(m); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
+    } else if (item === 'quote') {
+      composer.current?.quote(m.msgId!);
+    } else if (item === 'recall' && m.msgId) {
+      try {
+        await c.recall(convId, m.msgId);
+      } catch (e) {
+        // 4097 按 windowSeconds 选时限；4030 "你没有权限撤回这条消息"（AC-RCL-02-5）；不自动重试（问题 26）。
+        const windowSeconds = e instanceof IMError ? (e.details?.windowSeconds as number | undefined) : undefined;
+        toast(messageFor(e instanceof IMError ? e.code : 5000, 'recall', { windowSeconds }));
+      }
+    }
+  }
 
   // 标题（F-UI-06 规则 2）：群聊"群名（N）"，群名省略、（N）始终完整；成员数缺失、快照状态只显示群名；
   // 服务端确认不在群里时显示"群聊"。临时单聊（还没有会话）显示对方账号。
@@ -256,6 +433,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           const el = e.currentTarget;
           atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
           if (atBottom.current) setNewCount(0);
+          if (mentionAt !== null && mentionInView()) setMentionAt(null);
           if (el.scrollTop < 40 && messages.length > 0 && history === 'idle') void loadMore();
         }}
       >
@@ -276,9 +454,19 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
               {formatTime(r.ts)}
             </div>
           ) : r.m.deleted ? (
-            <div className="tt-tip" key={r.m.clientMsgId} data-testid="msg-deleted" onContextMenu={noBrowserMenu}>
-              {MESSAGE_DELETED}
-            </div>
+            r.m.recalled ? (
+              <RecallRow key={r.m.clientMsgId} m={r.m} convId={convId} highlight={highlight === r.m.seq} />
+            ) : (
+              <div
+                className={`tt-tip${highlight !== null && highlight === r.m.seq ? ' tt-highlight' : ''}`}
+                key={r.m.clientMsgId}
+                data-testid="msg-deleted"
+                data-seq={r.m.seq}
+                onContextMenu={noBrowserMenu}
+              >
+                {MESSAGE_DELETED}
+              </div>
+            )
           ) : r.m.type === 'tip' ? (
             <TipRow key={r.m.clientMsgId} m={r.m} convId={convId} />
           ) : (
@@ -289,10 +477,18 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 showName={type === 'group' && r.m.from !== self}
                 userState={userState}
                 convId={convId}
-                onOpenImage={setViewer}
+                highlight={highlight !== null && highlight === r.m.seq}
+                mentioned={r.m.from !== self && mentionsMe(r.m, self)}
+                hasMenu={menuItems(r.m).length > 0}
+                onOpenImage={(fileId) => setViewer({ fileId, id: r.m.clientMsgId })}
                 onCancel={() => c.cancelUpload(convId, r.m.clientMsgId)}
                 onRetry={() => setRetryId(r.m.clientMsgId)}
-                onMenu={(top, below, left) => setMenuAt({ id: r.m.clientMsgId, top, below, left })}
+                onQuote={(q) => void jumpTo(q.seq, QUOTE_JUMP_MAX)}
+                onMenu={(el, top, below, left) => {
+                  const items = menuItems(r.m);
+                  if (items.length > 0) setMenuAt({ id: r.m.clientMsgId, top, below, left, items, opener: el });
+                }}
+                menuHeight={() => menuItems(r.m).length * MENU_ITEM_HEIGHT + MENU_PADDING}
               />
               {tipFor.get(r.m.clientMsgId) !== undefined && (
                 <div className="tt-permission-tip" data-testid="permission-tip">
@@ -326,6 +522,19 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           </div>
         )}
       </div>
+      {mentionAt !== null && (
+        <button
+          className="tt-new-pill tt-mention-pill"
+          onClick={() => {
+            const seq = mentionAt;
+            setMentionAt(null); // 点过就消失（AC-MEN-03-6）
+            void jumpTo(seq, Infinity);
+          }}
+          data-testid="mention-jump"
+        >
+          有人@我
+        </button>
+      )}
       {newCount > 0 && (
         <button
           className="tt-new-pill"
@@ -349,12 +558,14 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         </div>
       ) : (
         <Composer
+          ref={composer}
           convId={convId}
           attach={canSendFiles ? <AttachButton onPick={sendFiles} /> : undefined}
           onPasteFiles={canSendFiles ? (files) => sendFiles(files, 'auto') : undefined}
-          onSend={(text) => {
+          group={type === 'group' && actionsOn ? { groupId: to, myRole: conv?.myRole } : undefined}
+          onSend={(text, extras) => {
             try {
-              const r = c.send(convId, text);
+              const r = c.send(convId, text, actionsOn ? extras : undefined);
               if (r.ok) {
                 atBottom.current = true;
                 return true;
@@ -397,54 +608,16 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
         )
       )}
       {fileDialog}
-      {viewer && <ImageViewer fileId={viewer} onClose={() => setViewer(null)} />}
+      {viewer && <ImageViewer fileId={viewer.fileId} onClose={() => setViewer(null)} />}
       {menu && (
-        <div className="tt-menu-layer" onClick={() => setMenuAt(null)} onContextMenu={(e) => e.preventDefault()}>
-          <div
-            className="tt-menu tt-bubble-menu"
-            role="menu"
-            style={{ top: menu.top, left: menu.left }}
-            data-below={menu.below || undefined}
-            onClick={(e) => e.stopPropagation()}
-            data-testid="bubble-menu"
-          >
-            {menu.m.type === 'text' && (
-              <button
-                role="menuitem"
-                onClick={async () => {
-                  const ok = await copyText(menu.m.body.text ?? '');
-                  toast(ok ? '已复制' : '复制失败，请长按文字手动复制');
-                  setMenuAt(null);
-                }}
-              >
-                复制
-              </button>
-            )}
-            {menu.m.status === 'failed' && menu.m.error !== 'sourceMissing' && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  c.retry(convId, menu.m.clientMsgId); // 菜单里的"重发"不再二次确认（F-UI-09 规则 3）
-                  setMenuAt(null);
-                }}
-              >
-                重发
-              </button>
-            )}
-            {menu.m.status === 'failed' && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  removeFailed(menu.m); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
-                  setMenuAt(null);
-                }}
-                data-testid="menu-delete"
-              >
-                删除
-              </button>
-            )}
-          </div>
-        </div>
+        <BubbleMenu
+          top={menu.top}
+          left={menu.left}
+          below={menu.below}
+          items={menu.items}
+          onPick={(item) => void act(item, menu.m)}
+          onClose={closeMenu}
+        />
       )}
     </div>
   );
@@ -488,57 +661,150 @@ const MOVE_CANCEL_PX = 10;
 const MENU_ITEM_HEIGHT = 44;
 const MENU_PADDING = 10; // 上下内边距 + 边框
 const MENU_HALF_WIDTH = 70;
-/** 没有菜单项的消息（提示消息、已删除）也不出现浏览器菜单（F-UI-09 规则 5）。 */
+/** 没有菜单项的消息（提示消息、已删除、已撤回）也不出现浏览器菜单（F-UI-09 规则 5）。 */
 const noBrowserMenu = (e: MouseEvent) => e.preventDefault();
 
-/** 消息气泡（F-UI-07、F-UI-08）。长按 500ms（移动超过 10px 取消）或右键打开菜单（F-UI-09）。 */
-/** 群提示消息（PRD-ui F-UI-40）：居中小字，没有头像、气泡和菜单；文案用本地显示名渲染。 */
-function TipRow({ m, convId }: { m: Message; convId: string }) {
-  const c = useClient();
-  const self = useSelf();
-  const tip = m.body.tip;
-  useProfiles(tip ? [tip.actor, ...tip.targets].filter(Boolean) : []);
-  const text = tip ? tipText(tip, self, (u) => c.displayName(u)) : '[群通知]';
-  if (tip?.kind === 'noticeUpdated') {
-    return (
-      <Link
-        className="tt-tip tt-tip-link"
-        to={noticePath(convId)}
-        data-testid="tip"
-        data-kind={tip.kind}
-        onContextMenu={noBrowserMenu}
-      >
-        {text}
-      </Link>
-    );
-  }
+/** 被 @ 的是我（含 @ 所有人）：气泡整体用样式提示（F-MEN-01 规则 4）。 */
+function mentionsMe(m: Message, self: string): boolean {
+  const x = m.body.mentions;
+  return !!x && (x.all === true || (x.userIds ?? []).includes(self));
+}
+
+/**
+ * 消息菜单（F-UI-09，PRD-chat 第 13.4 节键盘入口）：打开时焦点落在第一项，上下方向键、Home、End 移动，
+ * 回车执行，Esc 关闭（焦点回到气泡），Tab 离开时关闭。
+ */
+function BubbleMenu({
+  top,
+  left,
+  below,
+  items,
+  onPick,
+  onClose,
+}: {
+  top: number;
+  left?: number;
+  below: boolean;
+  items: MenuItem[];
+  onPick: (item: MenuItem) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, []);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const list = [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    const go = (n: number) => {
+      e.preventDefault();
+      list[(n + list.length) % list.length]?.focus();
+    };
+    if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i < 0 ? list.length - 1 : i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(list.length - 1);
+    else if (e.key === 'Tab') onClose();
+  };
   return (
-    <div className="tt-tip" data-testid="tip" data-kind={tip?.kind} onContextMenu={noBrowserMenu}>
-      {text}
+    <div className="tt-menu-layer" onClick={onClose} onContextMenu={(e) => e.preventDefault()}>
+      <div
+        ref={ref}
+        className="tt-menu tt-bubble-menu"
+        role="menu"
+        aria-label="消息操作"
+        style={{ top, left }}
+        data-below={below || undefined}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+        data-testid="bubble-menu"
+      >
+        {items.map((item) => (
+          <button key={item} role="menuitem" tabIndex={-1} onClick={() => onPick(item)} data-testid={`menu-${item}`}>
+            {MENU_TEXT[item]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
+/** 撤回提示行（F-RCL-02 规则 1a 的表，F-RCL-03 规则 6）：居中小字，没有菜单；显示名到了再替换。 */
+function RecallRow({ m, convId, highlight }: { m: Message; convId: string; highlight: boolean }) {
+  const c = useClient();
+  useProfiles([m.from, m.recalledBy ?? ''].filter(Boolean));
+  return (
+    <div
+      className={`tt-tip${highlight ? ' tt-highlight' : ''}`}
+      data-testid="msg-recalled"
+      data-seq={m.seq}
+      onContextMenu={noBrowserMenu}
+    >
+      {c.recallText(convId, m)}
+    </div>
+  );
+}
+
+/**
+ * 气泡顶部的引用（F-QUO-02 规则 3）：四种状态的文字来自 SDK 的 quoteLabel，正常时前面加原发送者的显示名；
+ * 按纯文本渲染（AC-QUO-02-5）。点击跳到原消息（规则 5）。
+ */
+function QuoteBlock({ q, onOpen }: { q: QuoteView; onOpen: () => void }) {
+  const self = useSelf();
+  const name = useDisplayName(q.from || self);
+  const label = quoteLabel(q);
+  const text = q.state === 'normal' && q.from ? `${name}: ${label}` : label;
+  return (
+    <button
+      type="button"
+      className="tt-quote"
+      data-state={q.state}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      data-testid="msg-quote"
+    >
+      {text}
+    </button>
+  );
+}
+
+/**
+ * 消息气泡（F-UI-07、F-UI-08）。长按 500ms（移动超过 10px 取消）或右键打开菜单（F-UI-09）；
+ * 有菜单的气泡可以 Tab 到，菜单键或 Shift+F10 打开（PRD-chat 第 13.4 节，AC-CHAT-90-9）。
+ */
 function Bubble({
   m,
   self,
   showName,
   userState,
   convId,
+  highlight,
+  mentioned,
+  hasMenu,
   onOpenImage,
   onCancel,
   onRetry,
+  onQuote,
   onMenu,
+  menuHeight,
 }: {
   m: Message;
   self: boolean;
   showName: boolean;
   userState: UserRouteState;
   convId: string;
+  highlight: boolean;
+  mentioned: boolean;
+  hasMenu: boolean;
   onOpenImage: (fileId: string) => void;
   onCancel: () => void;
   onRetry: () => void;
-  onMenu: (top: number, below: boolean, left?: number) => void;
+  onQuote: (q: QuoteView) => void;
+  onMenu: (el: HTMLElement, top: number, below: boolean, left?: number) => void;
+  menuHeight: () => number;
 }) {
   const press = useRef<{ x: number; y: number; t: ReturnType<typeof setTimeout> } | null>(null);
   const navigate = useNavigate();
@@ -546,31 +812,31 @@ function Bubble({
   const sender = useProfile(m.from);
   const attachment = m.type === 'image' || m.type === 'file';
   const supported = m.type === 'text';
-  const hasMenu = supported || m.status === 'failed';
-  const failedItems = m.status === 'failed' ? (m.error === 'sourceMissing' ? 1 : 2) : 0;
   const open = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     const list = el.closest('.tt-messages')?.getBoundingClientRect();
-    const items = (supported ? 1 : 0) + failedItems;
-    const height = items * MENU_ITEM_HEIGHT + MENU_PADDING;
+    const height = menuHeight();
     const below = !!list && r.top - list.top < height + 4;
     const top = below ? Math.min(r.bottom + 4, window.innerHeight - height - 4) : r.top - height - 4;
     // 窄屏容器不宽，菜单水平居中；宽屏跟着气泡（transform 让 left 指菜单中心）。
     const left = isWide()
       ? Math.min(Math.max(r.left + r.width / 2, MENU_HALF_WIDTH), window.innerWidth - MENU_HALF_WIDTH)
       : undefined;
-    onMenu(top, below, left);
+    onMenu(el, top, below, left);
   };
   const cancel = () => {
     if (press.current) clearTimeout(press.current.t);
     press.current = null;
   };
+  const quote = m.body.quote;
   return (
     <div
-      className={`tt-msg${self ? ' tt-msg-self' : ''}`}
+      className={`tt-msg${self ? ' tt-msg-self' : ''}${highlight ? ' tt-highlight' : ''}`}
       data-testid="message"
       data-status={m.status}
       data-client-msg-id={m.clientMsgId}
+      data-seq={m.seq}
+      data-mentioned={mentioned || undefined}
     >
       <button
         className="tt-msg-avatar-btn"
@@ -606,7 +872,16 @@ function Bubble({
             </span>
           )}
           <div
-            className={`tt-bubble${attachment ? ' tt-bubble-att' : supported ? '' : ' tt-bubble-unsupported'}`}
+            className={`tt-bubble${attachment ? ' tt-bubble-att' : supported ? '' : ' tt-bubble-unsupported'}${mentioned ? ' tt-bubble-mention' : ''}`}
+            tabIndex={hasMenu ? 0 : undefined}
+            aria-keyshortcuts={hasMenu ? 'Shift+F10' : undefined}
+            onKeyDown={(e) => {
+              if (!hasMenu || e.target !== e.currentTarget) return;
+              if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                e.preventDefault();
+                open(e.currentTarget);
+              }
+            }}
             onPointerDown={(e) => {
               if (!hasMenu || isWide()) return; // 宽屏用右键（F-UI-09 规则 1），按住鼠标是选择文字
               const el = e.currentTarget;
@@ -622,7 +897,9 @@ function Bubble({
               e.preventDefault();
               if (hasMenu) open(e.currentTarget);
             }}
+            data-testid="bubble"
           >
+            {quote && <QuoteBlock q={quote} onOpen={() => onQuote(quote)} />}
             {supported ? (
               m.body.text
             ) : m.type === 'image' ? (
@@ -636,6 +913,33 @@ function Bubble({
         </div>
         <AttachmentError m={m} />
       </div>
+    </div>
+  );
+}
+
+/** 群提示消息（PRD-ui F-UI-40）：居中小字，没有头像、气泡和菜单；文案用本地显示名渲染。 */
+function TipRow({ m, convId }: { m: Message; convId: string }) {
+  const c = useClient();
+  const self = useSelf();
+  const tip = m.body.tip;
+  useProfiles(tip ? [tip.actor, ...tip.targets].filter(Boolean) : []);
+  const text = tip ? tipText(tip, self, (u) => c.displayName(u)) : '[群通知]';
+  if (tip?.kind === 'noticeUpdated') {
+    return (
+      <Link
+        className="tt-tip tt-tip-link"
+        to={noticePath(convId)}
+        data-testid="tip"
+        data-kind={tip.kind}
+        onContextMenu={noBrowserMenu}
+      >
+        {text}
+      </Link>
+    );
+  }
+  return (
+    <div className="tt-tip" data-testid="tip" data-kind={tip?.kind} onContextMenu={noBrowserMenu}>
+      {text}
     </div>
   );
 }

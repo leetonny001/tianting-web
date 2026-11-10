@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
-import { admin, c2cId, chatUrl, failSends, loginAs, uid, WIDE } from './helpers';
+import { admin, c2cId, chatUrl, failSends, loginAs, msgActionsOff, uid, WIDE } from './helpers';
 
 // 宽屏三栏、键盘、侧板、右键菜单、Enter 发送（PRD-ui 3.3 节、FE-300、FE-301、FE-305）× 真实 im-server。
 
@@ -278,8 +278,11 @@ test('资料卡：从聊天页头像进入是侧板，后面聊天页还在；�
   await expect(page.getByTestId('main').getByText(`账号：${b}`)).toBeVisible();
 });
 
-test('右键：弹出菜单、preventDefault，可以选中文字（AC-UI-09-2）', async ({ browser }) => {
+test('右键：弹出菜单、preventDefault，可以选中文字（AC-UI-09-2）；C4 开关关闭时只有"复制"（AC-UI-09-1）', async ({
+  browser,
+}) => {
   const { page, A } = await twoGroups(browser);
+  await msgActionsOff(page);
   await page.goto(chatUrl(A));
   await send(page, '右键我');
   const bubble = page.locator('.tt-bubble', { hasText: '右键我' });

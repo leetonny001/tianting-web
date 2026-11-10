@@ -7,8 +7,10 @@ import { Confirm, Dialog } from '../components/Dialog';
 import { Icon, type IconName } from '../components/Icon';
 import { useToast } from '../components/Toast';
 import type { Attachments, MediaState } from '../im/attachments';
+import { useClient } from '../im/ImProvider';
 import { useAttachments } from '../im/hooks';
 import { browserCodec, processImage, type ImageCodec } from '../lib/imageProcess';
+import { MESSAGE_DELETED, MESSAGE_RECALLED } from '../lib/errors';
 import { attachmentErrorText, displaySize, formatSize, looksLikeImage, MAX_PICK, splitName } from '../lib/media';
 
 export type PickMode = 'image' | 'file';
@@ -356,6 +358,7 @@ export function FileBubble({
   onCancel: () => void;
 }) {
   const att = useAttachments();
+  const client = useClient();
   const toast = useToast();
   const f = m.body.file;
   const [ask, setAsk] = useState(false);
@@ -369,6 +372,12 @@ export function FileBubble({
     if (!att) return;
     att.markPrompted(convId);
     const r = await att.downloadUrl(fileId);
+    // 取地址期间被撤回、删除：不再交给浏览器（问题 16：交给浏览器之后的下载停不了，只能在开始前判断）。
+    const now = client.messages(convId).find((x) => x.clientMsgId === m.clientMsgId);
+    if (!now || now.deleted) {
+      toast(now?.recalled ? MESSAGE_RECALLED : MESSAGE_DELETED);
+      return;
+    }
     if ('error' in r) {
       toast(r.error === 4048 ? '文件不存在或已过期' : '下载失败');
       return;

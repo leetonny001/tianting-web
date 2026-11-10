@@ -7,7 +7,7 @@ import { ConnBanner } from '../components/ConnBanner';
 import { Icon } from '../components/Icon';
 import { badgeText, TabBar } from '../components/TabBar';
 import { TopBar } from '../components/TopBar';
-import { useIm, useSelf } from '../im/ImProvider';
+import { useClient, useIm, useSelf } from '../im/ImProvider';
 import {
   useConversations,
   useConversationsLoaded,
@@ -15,6 +15,7 @@ import {
   useDisplayName,
   useFriends,
   useProfile,
+  useProfiles,
 } from '../im/hooks';
 import { MESSAGE_DELETED } from '../lib/errors';
 import { useEscape } from '../lib/focus';
@@ -124,7 +125,7 @@ export function ChatsPage({ activeConvId }: { activeConvId?: string }) {
                 key={c.convId}
                 conv={c}
                 remark={c.type === 'c2c' ? remarks.get(peerOf(c.convId, self)) : undefined}
-                draft={drafts.get(c.convId)}
+                draft={drafts.get(c.convId)?.text}
                 selected={c.convId === activeConvId}
               />
             ))}
@@ -161,12 +162,20 @@ function Skeleton() {
 const summaryText = (c: Conversation) => {
   const m = c.lastMsg;
   if (!m) return '';
-  if (m.deleted) return MESSAGE_DELETED;
+  if (m.deleted) return m.recalled ? <RecallSummary conv={c} /> : MESSAGE_DELETED;
   // 提示消息用服务端摘要（F-UI-40 规则 3），不加发送者前缀。
   if (m.type === 'text' || m.type === 'tip') return m.text ?? '';
   // 图片、文件只显示类型，不带文件名（F-FILE-02 规则 5、F-FILE-03 规则 5：LastMsg 本来就没有文件名）。
   return attachmentSummary(m.type) ?? '[暂不支持的消息]';
 };
+
+/** 最后一条被撤回（F-RCL-03 规则 4）：和聊天页同一张表（F-RCL-02 规则 1a），不加发送者前缀。 */
+function RecallSummary({ conv }: { conv: Conversation }) {
+  const c = useClient();
+  const m = conv.lastMsg!;
+  useProfiles([m.from, m.recalledBy ?? ''].filter(Boolean));
+  return <>{c.recallText(conv.convId, m)}</>;
+}
 
 /** 群摘要的发送者前缀（PRD-ui F-UI-04 规则 5）：显示名未就绪时先显示 userId，就绪后替换。 */
 function SenderPrefix({ userId }: { userId: string }) {
@@ -221,7 +230,15 @@ const ConvItem = memo(function ConvItem({
           {conv.lastMsg && <span className="tt-conv-time">{formatTime(conv.lastMsg.ts, now)}</span>}
         </span>
         <span className="tt-conv-summary">
-          {draft !== undefined ? (
+          {(conv.mentionUnread ?? 0) > 0 && (
+            // 摘要前缀优先级"[有人@我]" > "[草稿]"（F-MEN-03 规则 2，AC-MEN-03-5）："[N 条]"随 C5
+            <>
+              <span className="tt-draft-tag" data-testid="mention-tag">
+                [有人@我]
+              </span>{' '}
+            </>
+          )}
+          {draft !== undefined && !((conv.mentionUnread ?? 0) > 0) ? (
             <>
               <span className="tt-draft-tag" data-testid="draft-tag">
                 [草稿]
