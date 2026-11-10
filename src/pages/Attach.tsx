@@ -372,14 +372,16 @@ export function FileBubble({
     if (!att) return;
     att.markPrompted(convId);
     const r = await att.downloadUrl(fileId);
-    // 取地址期间被撤回、删除：不再交给浏览器（问题 16：交给浏览器之后的下载停不了，只能在开始前判断）。
+    // 取地址期间被撤回、删除、过期：SDK 中止（DownloadAbortedError，问题 33），不再交给浏览器
+    // （问题 16：交给浏览器之后的下载停不了，只能在开始前判断）。消息状态再看一次，兜住中止之前就已经变了的。
     const now = client.messages(convId).find((x) => x.clientMsgId === m.clientMsgId);
-    if (!now || now.deleted) {
-      toast(now?.recalled ? MESSAGE_RECALLED : MESSAGE_DELETED);
+    const recalled = ('aborted' in r && r.aborted.recalled) || !!now?.recalled;
+    if (!now || now.deleted || recalled) {
+      toast(recalled ? MESSAGE_RECALLED : MESSAGE_DELETED);
       return;
     }
-    if ('error' in r) {
-      toast(r.error === 4048 ? '文件不存在或已过期' : '下载失败');
+    if (!('url' in r)) {
+      toast('error' in r && r.error !== 4048 ? '下载失败' : '文件不存在或已过期');
       return;
     }
     // 跨域地址：download 属性不起作用，靠签进去的 Content-Disposition: attachment（F-FILE-03 规则 4）。

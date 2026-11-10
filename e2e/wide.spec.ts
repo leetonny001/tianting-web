@@ -187,6 +187,10 @@ test('弹窗：宽 400，Tab 不出弹窗；Esc 关闭，焦点回到"+"（AC-UI
 
 test('只用键盘：打开会话 → 发送 → 打开聊天信息侧板 → Esc 关闭，焦点都可见（AC-UI-90-9）', async ({ browser }) => {
   const { page, A } = await twoGroups(browser);
+  // AC-UI-90-9 的流程从"打开会话"开始，登录只是前置条件：从刚打开的会话列表起步。不重新加载时，Tab 的起点是登录页上
+  // 已经移除的输入框，Chrome 157 起第一下 Tab 会离开页面（到浏览器界面），起点因浏览器而异，不是这里要验证的。
+  await page.goto('/chats');
+  await expect(conv(page, A)).toBeVisible();
   // Tab 顺序：导航栏 → 列表（FE-301）
   await page.keyboard.press('Tab');
   await expect(page.getByTestId('tab-chats')).toBeFocused();

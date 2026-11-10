@@ -136,8 +136,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   // 图片、文件入口（第 13.3 节）：服务端开关 features.files 打开、这次登录配了文件接口才有。
   const filesOn = !!knownConfig?.features?.files && !!attachments?.files;
   // 撤回、引用、@（C4）：GET /v1/config 的 features.msgActions（IM_MSG_ACTIONS_ENABLED）打开才有（PRD-ui F-UI-09 规则 4）。
-  // sdk-ts 的 AccountConfig 还没有这个字段（问题 36，frontend-chat），这里按服务端的 JSON 读。
-  const actionsOn = !!(knownConfig?.features as { msgActions?: boolean } | undefined)?.msgActions;
+  // AccountConfig.features.msgActions（可选，老服务端没有，按关闭处理；问题 36）。
+  const actionsOn = !!knownConfig?.features?.msgActions;
   const composer = useRef<ComposerHandle>(null);
   const [viewer, setViewer] = useState<{ fileId: string; id: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);

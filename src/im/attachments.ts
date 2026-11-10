@@ -4,7 +4,7 @@
 // - 下载的内容先看头部宽高，超过像素上限的不交给浏览器解码（F-FILE-02 规则 3，AC-FILE-02-12）。
 // - 预签名地址不写日志、不进状态（规则 5）：只在取到后马上用掉。
 // - 上传进度、自己刚发的图片的本地预览按 clientMsgId 记。
-import type { FileClient, FileVariant, IMClient } from '@tianting/sdk';
+import { DownloadAbortedError, type FileClient, type FileVariant, type IMClient } from '@tianting/sdk';
 import { decodable, sniffImage } from '../lib/media';
 
 export type MediaState =
@@ -188,12 +188,18 @@ export class Attachments {
 
   // ---- 文件下载 ----
 
-  /** 取原文件的下载地址（F-FILE-03 规则 3、4）：地址只交给浏览器下载，不保存。失败返回错误码或 'network'。 */
-  async downloadUrl(fileId: string): Promise<{ url: string } | { error: number | 'network' }> {
+  /**
+   * 取原文件的下载地址（F-FILE-03 规则 3、4）：地址只交给浏览器下载，不保存。失败返回错误码或 'network'。
+   * 取地址期间所在消息被撤回、删除或文件过期：SDK 中止（DownloadAbortedError，问题 33），返回 aborted（recalled 是否撤回）。
+   */
+  async downloadUrl(
+    fileId: string,
+  ): Promise<{ url: string } | { error: number | 'network' } | { aborted: { recalled: boolean } }> {
     try {
-      const [r] = await this.client.getFileUrls([{ fileId, variant: 'original' }]);
-      return r?.url ? { url: r.url } : { error: r?.code ?? 4048 };
-    } catch {
+      const r = await this.client.downloadUrl(fileId);
+      return r.url ? { url: r.url } : { error: r.code ?? 4048 };
+    } catch (e) {
+      if (e instanceof DownloadAbortedError) return { aborted: { recalled: e.recalled } };
       return { error: 'network' };
     }
   }

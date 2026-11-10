@@ -412,6 +412,55 @@ describe('收到图片和文件（F-FILE-02 规则 6，F-FILE-03 规则 3，FE-6
     }
   });
 
+  it('TC-RCL-03-12（H5 部分，问题 33）：取下载地址时被撤回或后台删除，SDK 中止（不等地址回来），提示对应文案，不交给浏览器', async () => {
+    const clicked: string[] = [];
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicked.push(this.href);
+    };
+    try {
+      const bench = filesBench();
+      const auto = bench.http.onRequest!;
+      // 原文件的地址一直不回：中止只能来自 SDK 的 DownloadAbortedError
+      bench.http.onRequest = (c) => {
+        const items = c.path === '/v1/files/urls' ? (c.json as { items: { variant: string }[] }).items : [];
+        if (!items.some((i) => i.variant === 'original')) auto(c);
+      };
+      const { c } = await open(
+        [
+          serverMsg(1, 'alice', 'file', { file: { fileId: 'F1', name: 'a.zip', size: 9, mime: 'application/zip' } }),
+          serverMsg(2, 'alice', 'file', { file: { fileId: 'F2', name: 'b.zip', size: 9, mime: 'application/zip' } }),
+        ],
+        bench,
+      );
+      for (const [i, recalled, text] of [
+        [0, { by: 'bob', at: Date.now() }, '该消息已被撤回'],
+        [1, undefined, '该消息已被删除'],
+      ] as const) {
+        fireEvent.click(screen.getAllByTestId('file-bubble')[0]!); // 撤回、删除的那条已经不是文件气泡
+        await settle();
+        expect(bench.http.to('/v1/files/urls').at(-1)!.settled).toBe(false);
+        await act(async () =>
+          c.receive({
+            cmd: 'event',
+            data: {
+              type: 'msgDeleted',
+              convId: AB,
+              msgIds: [`m${i + 1}`],
+              seqs: [i + 1],
+              ...(recalled ? { recalled } : {}),
+            },
+          }),
+        );
+        await settle();
+        expect(screen.getByTestId('toast')).toHaveTextContent(text);
+      }
+      expect(clicked).toEqual([]);
+    } finally {
+      HTMLAnchorElement.prototype.click = orig;
+    }
+  });
+
   it('GIF 和其他图片一样显示原文件的缩略图（H5 播放，AC-FILE-02-14 的 H5 部分在 e2e）', async () => {
     media['https://s3.test/final/F9/thumb?sig=1'] = gifHead(30, 20);
     await open([

@@ -11,12 +11,18 @@ const G = 'group:g1';
 const at = (convId: string) => `/chat/${encodeURIComponent(convId)}`;
 const NOW = Date.now();
 
-let msgActions = true;
+/** undefined：老服务端，features 里没有这个字段。 */
+let msgActions: boolean | undefined = true;
 beforeEach(() => {
   msgActions = true;
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     if (String(input).endsWith('/v1/config')) {
-      return new Response(JSON.stringify({ ...DEMO_CONFIG, features: { files: false, msgActions } }));
+      return new Response(
+        JSON.stringify({
+          ...DEMO_CONFIG,
+          features: { files: false, ...(msgActions === undefined ? {} : { msgActions }) },
+        }),
+      );
     }
     return new Response('{}', { status: 500 });
   });
@@ -132,6 +138,13 @@ describe('消息菜单（PRD-ui F-UI-09 规则 3～5，C4）', () => {
     await openChat(AB, [sm(AB, 1, 'alice', { text: '我发的' }, { ts: NOW - 10_000 })]);
     fireEvent.contextMenu(bubbleOf('我发的'));
     expect(menuItems()).toEqual(['复制', '引用', '撤回']);
+  });
+
+  it('问题 36：老服务端的 features 没有 msgActions（按 AccountConfig 的类型读）：按关闭处理，只有"复制"', async () => {
+    msgActions = undefined;
+    await openChat(AB, [sm(AB, 1, 'alice', { text: '我发的' }, { ts: NOW - 10_000 })]);
+    fireEvent.contextMenu(bubbleOf('我发的'));
+    expect(menuItems()).toEqual(['复制']);
   });
 
   it('TC-RCL-01-08 撤回按校正后的服务端时间（设备快 10 分钟）：60 秒内有、121 秒后没有；菜单开着过期，点了提示 4097', async () => {
