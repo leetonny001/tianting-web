@@ -28,6 +28,7 @@ const codec: ImageCodec = {
 let media: Record<string, Uint8Array | number> = {};
 let mediaGets: string[] = [];
 let created = 0;
+let revoked: string[] = [];
 const origCreate = URL.createObjectURL;
 const origRevoke = URL.revokeObjectURL;
 
@@ -39,7 +40,8 @@ beforeEach(() => {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/v1/config')) {
-      return new Response(JSON.stringify({ ...DEMO_CONFIG, features: { files: true } }));
+      // convSettings：删除会话时的缓存清除（C5，TC-CVS-03-08 的 H5 部分）要会话菜单
+      return new Response(JSON.stringify({ ...DEMO_CONFIG, features: { files: true, convSettings: true } }));
     }
     mediaGets.push(url);
     const body = media[url];
@@ -47,8 +49,11 @@ beforeEach(() => {
     if (typeof body === 'number') return new Response('', { status: body });
     return new Response(body as BlobPart, { status: 200 });
   });
+  revoked = [];
   URL.createObjectURL = () => `blob:test/${++created}`;
-  URL.revokeObjectURL = () => {};
+  URL.revokeObjectURL = (u: string) => {
+    revoked.push(u);
+  };
   setImageCodecForTest(codec);
 });
 afterEach(() => {
@@ -479,5 +484,58 @@ describe('收到图片和文件（F-FILE-02 规则 6，F-FILE-03 规则 3，FE-6
     const summary = (id: string) => document.querySelector(`[data-conv-id="${id}"] .tt-conv-summary`)!.textContent;
     expect(summary(AB)).toBe('[图片]');
     expect(summary(G)).toBe('bob: [文件]');
+  });
+});
+
+describe('删除会话（C5，TC-CVS-03-08 的 H5 缓存部分，frontend-chat 第 59 条）', () => {
+  it('取消时图片缓存、上传中的附件都不动；确认删除后看过的图片和上传预览的 blob: 都释放，上传取消（DELETE 临时对象）、不发 send', async () => {
+    const f = filesBench();
+    media['https://s3.test/final/F9/thumb?sig=1'] = pngHead(400, 300);
+    const { c } = await renderLoggedIn(at(AB), { convs: [{ convId: AB, name: 'bob', maxSeq: 1 }], files: f });
+    await act(async () =>
+      c.ack('sync', {
+        messages: [
+          serverMsg(1, 'bob', 'image', {
+            image: { fileId: 'F9', width: 400, height: 300, size: 9, mime: 'image/png' },
+          }),
+        ],
+        hasMore: false,
+      }),
+    );
+    await settle();
+    await act(async () => new Promise((res) => setTimeout(res, 60)));
+    await settle();
+    expect(screen.getByTestId('img-thumb')).toHaveAttribute('src', 'blob:test/1'); // 看过的图片
+    await pick('pick-image', [file(jpegHead(40, 20), 'p.jpg', 'image/jpeg')]);
+    expect(f.upload.calls).toHaveLength(1); // 上传中，本地预览 blob:test/2
+    expect(screen.getAllByTestId('img-thumb').map((e) => e.getAttribute('src'))).toEqual([
+      'blob:test/1',
+      'blob:test/2',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    await settle();
+    const conv = () => document.querySelector<HTMLElement>(`[data-conv-id="${AB}"]`);
+    const ask = async () => {
+      fireEvent.contextMenu(conv()!, { clientX: 20, clientY: 20 });
+      await settle();
+      fireEvent.click(screen.getByTestId('conv-menu-delete'));
+      await settle();
+      return screen.getByTestId('conv-delete-dialog');
+    };
+    fireEvent.click(within(await ask()).getByRole('button', { name: '取消' }));
+    await settle();
+    expect(revoked).toEqual([]);
+    expect(f.upload.calls[0]!.aborted).toBe(false);
+
+    fireEvent.click(within(await ask()).getByRole('button', { name: '删除' }));
+    await settle();
+    expect(c.last('convDelete').data).toEqual({ convId: AB, upToSeq: 1 });
+    await act(async () => c.receive({ id: c.last('convDelete').id, cmd: 'ack', data: { clearedSeq: 1 } }));
+    await settle();
+    expect(conv()).toBeNull();
+    expect(revoked.sort()).toEqual(['blob:test/1', 'blob:test/2']);
+    expect(f.upload.calls[0]!.aborted).toBe(true);
+    expect(f.http.to('/v1/files/uploads/F1').map((x) => x.req.method)).toEqual(['DELETE']);
+    expect(c.frames().some((x) => x.cmd === 'send')).toBe(false);
   });
 });

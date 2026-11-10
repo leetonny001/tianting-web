@@ -169,6 +169,13 @@ a {
   padding: 0 var(--tt-space-4);
   border-bottom: 1px solid var(--tt-color-divider);
 }
+/* 置顶的会话（C5，F-CVS-01、AC-CVS-01-6）：背景区分；宽屏选中的高亮写在后面，盖过它 */
+.tt-conv-pinned {
+  background: var(--tt-color-surface-pinned);
+}
+.tt-conv[aria-haspopup] {
+  -webkit-touch-callout: none; /* 长按是会话菜单，不要浏览器的链接菜单 */
+}
 .tt-conv-avatar {
   position: relative;
   flex-shrink: 0;
@@ -200,6 +207,26 @@ a {
 .tt-conv-time {
   flex-shrink: 0;
   font-size: var(--tt-font-caption);
+  color: var(--tt-color-text-tertiary);
+}
+/* 免打扰的未读：小红点、没有数字（F-CVS-02 规则 5） */
+.tt-conv-avatar .tt-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--tt-radius-full);
+  background: var(--tt-color-badge-bg);
+}
+.tt-conv-row > .tt-conv-summary {
+  flex: 1;
+  min-width: 0;
+}
+.tt-conv-mute {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-self: center;
   color: var(--tt-color-text-tertiary);
 }
 .tt-conv-summary {

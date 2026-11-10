@@ -70,6 +70,8 @@ export default defineConfig({
         IM_OBJSTORE_SECRET_KEY: 'web-e2e-fake-s3-not-a-secret',
         // 撤回、引用、@（C4）：要隔离密钥（上面的 IM_QUARANTINE_KEY）。关闭时的菜单用 msgActionsOff 改 /v1/config 验证（AC-UI-09-1）。
         IM_MSG_ACTIONS_ENABLED: '1',
+        // 会话置顶、免打扰、删除（C5）。关闭时的菜单用改写 /v1/config 验证（TC-CVS-01-06 第 3 条）。
+        IM_CONV_SETTINGS_ENABLED: '1',
       },
     },
     {

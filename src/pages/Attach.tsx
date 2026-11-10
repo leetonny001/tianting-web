@@ -50,6 +50,7 @@ export function useSendAttachments(c: IMClient, convId: string, onSent: () => vo
                 )
               : c.sendFile(convId, { data: f, name: f.name || 'file', mime: f.type || undefined }, { onProgress });
           id = m.clientMsgId;
+          att.track(id, convId);
         }
         onSent();
       } catch (e) {

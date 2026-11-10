@@ -38,12 +38,15 @@ export class Attachments {
   private media = new Map<string, MediaState>();
   private progress = new Map<string, number>();
   private previews = new Map<string, string>();
+  /** 发送中的附件属于哪个会话（clientMsgId → convId）：删除会话时丢掉这个会话的预览和进度。 */
+  private owners = new Map<string, string>();
   private prompted = new Set<string>();
   private listeners = new Set<() => void>();
   private queue = new Map<string, { fileId: string; variant: FileVariant }>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly offExpired: () => void;
+  private readonly offDeleted: () => void;
   private readonly fetchImpl: typeof fetch;
   private readonly createUrl: (b: Blob) => string;
   private readonly revokeUrl: (url: string) => void;
@@ -60,6 +63,22 @@ export class Attachments {
     this.offExpired = client.on('filesExpired', (ids) => {
       for (const id of ids) for (const v of ['thumb', 'original'] as const) this.drop(key(id, v));
       this.notify();
+    });
+    // 删除会话（C5，frontend-chat 第 59 条）：SDK 已经取消上传、丢掉排队和失败的消息，这里释放它们的本地预览（blob:）和进度。
+    // 其他设备删除时本机没发出的消息还在（第 63 条），还在的不动。
+    this.offDeleted = client.on('convDeleted', (convId) => {
+      const alive = new Set(client.messages(convId).map((m) => m.clientMsgId));
+      let changed = false;
+      for (const [id, owner] of this.owners) {
+        if (owner !== convId || alive.has(id)) continue;
+        this.owners.delete(id);
+        const url = this.previews.get(id);
+        if (url) this.revokeUrl(url);
+        const hadPreview = this.previews.delete(id);
+        const hadProgress = this.progress.delete(id);
+        changed ||= hadPreview || hadProgress;
+      }
+      if (changed) this.notify();
     });
   }
 
@@ -215,6 +234,11 @@ export class Attachments {
 
   // ---- 发送中的附件 ----
 
+  /** 记下发送中的附件属于哪个会话（删除会话时用）。 */
+  track(clientMsgId: string, convId: string): void {
+    if (clientMsgId && !this.disposed) this.owners.set(clientMsgId, convId);
+  }
+
   progressOf(clientMsgId: string): number | undefined {
     return this.progress.get(clientMsgId);
   }
@@ -256,6 +280,7 @@ export class Attachments {
     if (this.disposed) return;
     this.disposed = true;
     this.offExpired();
+    this.offDeleted();
     if (this.timer) clearTimeout(this.timer);
     for (const v of this.media.values()) if (v.status === 'ready') this.revokeUrl(v.url);
     for (const u of this.previews.values()) this.revokeUrl(u);
@@ -264,6 +289,7 @@ export class Attachments {
     this.media.clear();
     this.previews.clear();
     this.progress.clear();
+    this.owners.clear();
     this.queue.clear();
     this.notify();
   }

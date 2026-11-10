@@ -1,7 +1,7 @@
 import { countCodePoints, MAX_TEXT_LENGTH, quoteSummary, type GroupRole, type Mentions } from '@tianting/sdk';
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Icon } from '../components/Icon';
-import { useIm, useSelf } from '../im/ImProvider';
+import { useClient, useIm, useSelf } from '../im/ImProvider';
 import type { MentionRange } from '../im/drafts';
 import { useDisplayName, useMessages } from '../im/hooks';
 import { EMOJI } from '../lib/emoji';
@@ -79,6 +79,21 @@ export function Composer({
       drafts.put(convId, { text: l.text, mentions: l.ranges, ...(l.quote ? { quote: { msgId: l.quote } } : {}) });
     };
   }, [drafts, convId]);
+
+  // 这个会话被删除（宽屏列表里删的，或其他设备删的，C5）：输入框里的内容也是草稿，一起清除（F-CVS-03 规则 7，frontend-chat 第 55 条）。
+  const client = useClient();
+  useEffect(
+    () =>
+      client.on('convDeleted', (id) => {
+        if (id !== convId) return;
+        latest.current = { text: '', ranges: [], quote: null };
+        setText('');
+        setRanges([]);
+        setQuote(null);
+        setPicker(null);
+      }),
+    [client, convId],
+  );
 
   useImperativeHandle(ref, () => ({
     quote(msgId: string) {

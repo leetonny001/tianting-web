@@ -116,13 +116,17 @@ function signedIn(
 ): SessionState {
   const files = filesFactory(auth);
   const client = factory(files);
+  const drafts = new DraftStore();
+  // 会话被删除（本端删除成功，或同一账号的其他设备删除，C5）：这个标签页的草稿也清除（F-CVS-03 规则 7，frontend-chat 第 55 条）。
+  // 客户端随退出登录销毁，监听不用单独取消。
+  client.on('convDeleted', (convId) => drafts.remove(convId));
   return {
     client,
     session,
     demoToken,
     notices: new NoticeStore(client, session.userId),
     attachments: new Attachments(client, files),
-    drafts: new DraftStore(),
+    drafts,
   };
 }
 

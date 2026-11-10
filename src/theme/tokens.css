@@ -8,6 +8,7 @@
   --tt-color-bg: #F2F3F7;
   --tt-color-surface: #FFFFFF;
   --tt-color-surface-selected: #E8EBFA;
+  --tt-color-surface-pinned: #F3F4F8;
   --tt-color-chat-bg: #EEF0FA;
   --tt-color-bubble-self-bg: #4C5FD5;
   --tt-color-bubble-self-text: #FFFFFF;
@@ -71,6 +72,7 @@
   --tt-color-bg: #111318;
   --tt-color-surface: #1B1E25;
   --tt-color-surface-selected: #2A2F45;
+  --tt-color-surface-pinned: #23262E;
   --tt-color-chat-bg: #0D0F13;
   --tt-color-bubble-self-bg: #4352C4;
   --tt-color-bubble-self-text: #FFFFFF;

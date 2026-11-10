@@ -76,7 +76,14 @@ export function NavRail({ section }: { section: Section }) {
             key={t.to}
             to={t.to}
             className={`tt-rail-item${active ? ' tt-tab-active' : ''}`}
-            aria-label={t.label}
+            // 角标的数字是能看见的文字，可读名称要包含它（axe label-content-name-mismatch，C5 的免打扰角标测出来的）
+            aria-label={
+              t.to === '/chats' && total > 0
+                ? `${t.label}，${badgeText(total)} 条未读`
+                : t.to === '/contacts' && unseen > 0
+                  ? `${t.label}，${badgeText(unseen)} 个新的朋友`
+                  : t.label
+            }
             aria-current={active ? 'page' : undefined}
             title={t.label}
             data-testid={`tab-${t.icon}`}

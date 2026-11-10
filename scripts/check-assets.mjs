@@ -18,6 +18,7 @@ const SVG_ALLOWED = new Set([
   'smile',
   'user-round-plus',
   'messages-square',
+  'bell-off', // 会话列表的免打扰图标（C5，FE-683，frontend-chat 第 57 条）
 ]);
 
 export function checkAssets(dir) {

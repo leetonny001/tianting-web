@@ -101,7 +101,10 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const snapshot = useSnapshot(convId);
   const messages = useMessages(convId);
   // 群不在会话列表、也没有快照时先向服务端确认（G-UI-26）：确认前只显示加载状态，不显示输入框和"不在该群"。
-  const [probe, setProbe] = useState<'idle' | 'loading' | 4033 | 4043>('idle');
+  // done：服务端确认能进（还是成员），但一条消息也没有，比如删除过会话的群（PRD-chat F-CVS-03 规则 4）：显示空的聊天页。
+  const [probe, setProbe] = useState<'idle' | 'loading' | 'done' | 4033 | 4043>('idle');
+  // 这种群不在会话列表里，标题的群名向服务端要（groupInfo）；拿不到就显示 groupId，和以前一样。
+  const [probedName, setProbedName] = useState<string | null>(null);
   const [history, setHistory] = useState<'idle' | 'loading' | 'end' | 'error'>('idle');
   const [newCount, setNewCount] = useState(0);
   // 只记 clientMsgId，渲染时从最新列表取：打开着菜单时消息被删除，这里不能留着一份原文（F-UI-42）。
@@ -170,7 +173,15 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 发起请求前进入"确认中"，和请求是同一个外部同步过程
     setProbe('loading');
     c.loadHistory(convId)
-      .then(() => live && setProbe('idle'))
+      .then(() => {
+        if (!live) return;
+        setProbe('done');
+        if (type === 'group' && c.messages(convId).length === 0) {
+          c.getGroupInfo(to)
+            .then((i) => live && setProbedName(i.name))
+            .catch(() => {});
+        }
+      })
       .catch((e: unknown) => {
         if (!live) return;
         const code = e instanceof IMError ? e.code : 0;
@@ -199,7 +210,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
       : probe === 4043
         ? { tip: '群聊不存在或已解散', bar: '群聊不存在或已解散' }
         : null;
-  const probing = type === 'group' && unknown && probe !== 4033 && probe !== 4043;
+  const probing = type === 'group' && unknown && probe !== 'done' && probe !== 4033 && probe !== 4043;
 
   // 不能发送时输入内容不保留（F-UI-33 规则 5）。子组件 Composer 卸载时存的草稿先于这里运行；禁言不走这条，内容保留。
   const isBlocked = blocked !== null;
@@ -367,7 +378,9 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   const name =
     type === 'c2c' && remarkOrNickname !== to
       ? remarkOrNickname // 单聊：备注 > 昵称（会话名是服务端给的昵称，备注只在本机）
-      : (conv?.name ?? snapshot?.name ?? (type === 'group' && probe !== 'idle' && probe !== 'loading' ? '群聊' : to));
+      : (conv?.name ??
+        snapshot?.name ??
+        (type === 'group' && (probe === 4033 || probe === 4043) ? '群聊' : (probedName ?? to)));
   const count = type === 'group' && conv?.memberCount !== undefined ? `（${conv.memberCount}）` : '';
   const tips = useSendTips(convId);
   const strangerMsgLimit = useSocialSettings().strangerMsgLimit;

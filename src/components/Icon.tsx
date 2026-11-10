@@ -1,5 +1,6 @@
 // 图标全部来自 Lucide（ISC 许可，见 LICENSES/lucide.txt），统一 stroke-width 1.75、currentColor（PRD-ui 6.6 节）。
 import {
+  BellOff,
   BookUser,
   ChevronLeft,
   ChevronRight,
@@ -57,6 +58,8 @@ const icons = {
   close: X,
   zoomIn: ZoomIn,
   zoomOut: ZoomOut,
+  // 会话列表的免打扰（C5，PRD-chat F-CVS-02 规则 5；PRD-ui 6.6 节清单随 BE-488）
+  notifyOff: BellOff,
 } as const;
 
 export type IconName = keyof typeof icons;
