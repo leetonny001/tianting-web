@@ -80,6 +80,15 @@ async function groupOf(owner: string, members: string[], name = 'C5 群') {
   return `group:${g}`;
 }
 
+/**
+ * 记一条帧。被 routeWebSocket 接管、又转给服务端的连接，Playwright 的 framesent / framereceived 也会报，
+ * 和 intercept、switchable 自己记的重复：同一个 id 和 cmd 只记一次（没有 id 的事件不去重）。
+ */
+function record(into: Frame[], f: Frame) {
+  if (f.id && into.some((x) => x.id === f.id && x.cmd === f.cmd)) return;
+  into.push(f);
+}
+
 /** 新上下文里演示登录，记下页面发出的 WebSocket 帧（只在内存）。默认窄屏（Pixel 7，触屏）。 */
 async function open(browser: Browser, userId: string, opts?: BrowserContextOptions, path = '/chats') {
   const ctx = await browser.newContext(opts);
@@ -88,7 +97,7 @@ async function open(browser: Browser, userId: string, opts?: BrowserContextOptio
   const got: Frame[] = [];
   const parse = (into: Frame[]) => (f: { payload: string | Buffer }) => {
     try {
-      into.push(JSON.parse(String(f.payload)) as Frame);
+      record(into, JSON.parse(String(f.payload)) as Frame);
     } catch {
       // 不是 JSON 的帧不管
     }
@@ -126,18 +135,18 @@ async function intercept(
   const st: { push: (f: Frame) => void } = { push: () => {} };
   await page.routeWebSocket(/\/ws(\?|$)/, (ws) => {
     const server = ws.connectToServer();
-    st.push = (f) => (page.got.push(f), ws.send(JSON.stringify(f)));
+    st.push = (f) => (record(page.got, f), ws.send(JSON.stringify(f)));
     ws.onMessage((m) => {
       const f = JSON.parse(String(m)) as Frame;
-      page.sent.push(f);
-      if (hooks.up?.(f, (r) => (page.got.push(r), ws.send(JSON.stringify(r))))) return;
+      record(page.sent, f);
+      if (hooks.up?.(f, (r) => (record(page.got, r), ws.send(JSON.stringify(r))))) return;
       server.send(m);
     });
     server.onMessage((m) => {
       const f = JSON.parse(String(m)) as Frame;
       const out = hooks.down ? hooks.down(f) : f;
       if (!out) return;
-      page.got.push(out);
+      record(page.got, out);
       ws.send(JSON.stringify(out));
     });
   });
@@ -153,11 +162,11 @@ async function switchable(page: P) {
     if (!st.online) await new Promise<void>((r) => st.waiters.push(r));
     const server = ws.connectToServer();
     ws.onMessage((m) => {
-      page.sent.push(JSON.parse(String(m)) as Frame);
+      record(page.sent, JSON.parse(String(m)) as Frame);
       server.send(m);
     });
     server.onMessage((m) => {
-      page.got.push(JSON.parse(String(m)) as Frame);
+      record(page.got, JSON.parse(String(m)) as Frame);
       ws.send(m);
     });
     st.close = () => {
