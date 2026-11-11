@@ -53,7 +53,6 @@ import {
   SOURCE_MISSING,
 } from '../lib/errors';
 import { noticePath } from '../lib/group';
-import { canReport } from '../lib/report';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
@@ -344,7 +343,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
 
   /**
    * 菜单项（F-UI-09 规则 3～5）：C4 开关关时只有"复制"和失败消息的两项；开时按 SDK 的 messageActions。
-   * "举报"排在"撤回"后面（第 13.3 节），features.moderation 打开、canReport 为真才有（frontend-chat 第 76、77 条）。
+   * "举报"排在"撤回"后面（第 13.3 节），features.moderation 打开、SDK 的 canReport 为真才有（frontend-chat 第 76、77、88、89、92 条）。
    * 失败的消息按 SDK 的 canRetry：4510 被拦截的、原文件不在的没有"重发"，只有"复制""删除"（第 81 条）。
    */
   const menuItems = (m: Message): MenuItem[] => {
@@ -353,7 +352,7 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
       : !m.deleted && m.type === 'text'
         ? ['copy']
         : [];
-    if (reportOn && canReport(m, self)) out.push('report');
+    if (reportOn && c.canReport(m)) out.push('report');
     if (c.canRetry(m)) out.push('retry');
     if (m.status === 'failed') out.push('delete');
     return out;
@@ -486,11 +485,9 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
                 m={r.m}
                 convId={convId}
                 highlight={highlight === r.m.seq}
-                // 别人撤回的、本机看过的（seq ≤ 已读位置，和服务端 readSeq ≥ seq 的校验一致，F-MOD-03 规则 2a）才有"举报"。
+                // 别人撤回的、本机看过的（SDK canReport：seq ≤ readSeq、会话在本地列表，F-MOD-03 规则 2a，第 89、92 条）才有"举报"。
                 onReport={
-                  reportOn && canReport(r.m, self) && (r.m.seq ?? Infinity) <= (conv?.readSeq ?? 0)
-                    ? () => setReporting({ msgId: r.m.msgId!, from: r.m.from })
-                    : undefined
+                  reportOn && c.canReport(r.m) ? () => setReporting({ msgId: r.m.msgId!, from: r.m.from }) : undefined
                 }
               />
             ) : (

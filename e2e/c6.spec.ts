@@ -187,6 +187,26 @@ async function reportMessage(page: Page, text: string, reason: string, note?: st
   await page.getByTestId('report-submit').click();
 }
 
+/**
+ * 撤回提示行的"举报"点击区域不小于 44×44（PRD-ui 最小触控区域，frontend-chat 第 93 条）；字号和提示行文字一样，没有变大。
+ * 在按钮区域边缘（中心上下 20px）点也落在按钮上。
+ */
+async function expectTouchTarget(page: Page) {
+  const btn = page.getByTestId('recall-report');
+  const box = (await btn.boundingBox())!;
+  expect(box.width, 'width').toBeGreaterThanOrEqual(44);
+  expect(box.height, 'height').toBeGreaterThanOrEqual(44);
+  const font = (l: typeof btn) => l.evaluate((el) => getComputedStyle(el).fontSize);
+  expect(await font(btn)).toBe(await font(page.getByTestId('msg-recalled')));
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  for (const y of [cy - 20, cy + 20]) {
+    expect(
+      await page.evaluate(([x, yy]) => document.elementFromPoint(x!, yy!)?.getAttribute('data-testid'), [cx, y]),
+    ).toBe('recall-report');
+  }
+}
+
 const axeProblems = async (page: Page) => {
   const r = await new AxeBuilder({ page }).analyze();
   return r.violations
@@ -309,6 +329,7 @@ test('TC-MOD-03-11（真实 report，等 BE-495）：群里看过后被撤回的
   await w.ok('recall', { convId: g.convId, msgId: m.msgId });
   w.close();
   await expect(p.getByTestId('msg-recalled')).toHaveText('撤一撤回了一条消息');
+  await expectTouchTarget(p);
   await p.getByTestId('recall-report').click();
   await p.getByTestId('report-reason-other').check();
   await p.getByTestId('report-submit').click();
@@ -483,6 +504,8 @@ for (const scheme of ['light', 'dark'] as const) {
     await w.ok('recall', { convId: conv, msgId: m.msgId });
     w.close();
     await expect(p.getByTestId('recall-report')).toBeVisible();
+    await expect(p.getByTestId('msg-recalled')).toHaveText('对方撤回了一条消息');
+    await expectTouchTarget(p);
     expect(await p.getByTestId('recall-report').evaluate((el) => getComputedStyle(el).color)).toBe(
       await tokenColor(p, '--tt-color-brand'),
     );

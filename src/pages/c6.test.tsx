@@ -1,12 +1,12 @@
 // FE-693（PRD-chat C6）：举报入口和举报单、4510 的提示（FakeTransport）。真实 im-server 和浏览器键盘见 e2e/c6.spec.ts。
 // 不放真实敏感词：被拦截的内容只用特征串 ZXQWORD（F-MOD-01 规则 5）。
-import { AccountError, type Message } from '@tianting/sdk';
+import { AccountError, IMClient } from '@tianting/sdk';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { FakeConnection } from '@tianting/sdk/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountErrorText } from '../lib/accountText';
-import { canReport, clampCodePoints, codePoints, REPORT_REASONS } from '../lib/report';
+import { clampCodePoints, codePoints, REPORT_REASONS } from '../lib/report';
 import { DEMO_CONFIG } from '../test/harness-fetch';
 import { renderLoggedIn, serverConv, settle, type Conv } from '../test/harness';
 
@@ -136,31 +136,7 @@ async function pick(reason: string, note?: string) {
   await settle();
 }
 
-describe('canReport（frontend-chat 第 77 条；问题 88：SDK 补上 canReport 之前的页面实现）', () => {
-  const base = { clientMsgId: 'c', msgId: 'm1', seq: 1, convId: AB, from: 'bob', ts: 1, body: { text: 'x' } };
-  const m = (p: Partial<Message>) => ({ ...base, type: 'text', status: 'sent', ...p }) as Message;
-  it('别人发的、发送成功的 text、image、file 可以举报', () => {
-    for (const type of ['text', 'image', 'file'] as const) expect(canReport(m({ type }), 'alice'), type).toBe(true);
-  });
-  it('自己的、tip、custom、发送中、失败、没有 msgId、后台删除的都不行', () => {
-    expect(canReport(m({ from: 'alice' }), 'alice')).toBe(false);
-    expect(canReport(m({ type: 'tip' }), 'alice')).toBe(false);
-    expect(canReport(m({ type: 'custom' }), 'alice')).toBe(false);
-    expect(canReport(m({ status: 'sending' }), 'alice')).toBe(false);
-    expect(canReport(m({ status: 'failed', error: 4510 }), 'alice')).toBe(false);
-    expect(canReport(m({ status: 'queued' }), 'alice')).toBe(false);
-    expect(canReport(m({ msgId: undefined }), 'alice')).toBe(false);
-    expect(canReport(m({ deleted: true, body: {} }), 'alice')).toBe(false);
-  });
-  it('撤回的：别人的消息、别人撤回的才行；recalledBy 为空按别人撤回', () => {
-    const r = (p: Partial<Message>) => m({ deleted: true, recalled: true, body: {}, ...p });
-    expect(canReport(r({ recalledBy: 'bob' }), 'alice')).toBe(true);
-    expect(canReport(r({ recalledBy: undefined }), 'alice')).toBe(true);
-    expect(canReport(r({ recalledBy: 'owner1' }), 'alice')).toBe(true);
-    expect(canReport(r({ recalledBy: 'alice' }), 'alice')).toBe(false); // 我（管理员）撤回的
-    expect(canReport(r({ from: 'alice', recalledBy: 'alice' }), 'alice')).toBe(false);
-    expect(canReport(r({ from: 'alice', recalledBy: 'owner1' }), 'alice')).toBe(false);
-  });
+describe('举报单的常量（第 78、84 条）', () => {
   it('补充说明按码点数，截断到 200 个码点（第 84 条）', () => {
     expect(codePoints('😀'.repeat(3))).toBe(3);
     expect(clampCodePoints('😀'.repeat(201))).toBe('😀'.repeat(200));
@@ -194,6 +170,26 @@ describe('消息菜单"举报"（F-MOD-03 规则 8，TC-MOD-03-09 第 4 条）',
     await openMenu('我说');
     expect(menuTexts()).not.toContain('举报');
     expect(screen.getByTestId('tip').querySelector('button')).toBeNull();
+  });
+
+  it('显示不显示由 SDK 的 canReport 决定（第 88 条）：SDK 说不行时别人的消息也没有"举报"，页面问的是每一条消息', async () => {
+    const spy = vi.spyOn(IMClient.prototype, 'canReport').mockReturnValue(false);
+    try {
+      await openChat(G, [sm(G, 1, 'bob', { text: 'bob 说' })]);
+      await openMenu('bob 说');
+      expect(menuTexts()).toEqual(['复制', '引用']);
+      expect(spy.mock.calls.some(([m]) => m.msgId === 'm1')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('会话不在本地列表（从别处打开、服务端补拉的历史）：别人的消息也没有"举报"（第 92 条）', async () => {
+    const r = await renderLoggedIn(at(AB), { convs: [] });
+    await answer(r.c, 'socialSync', { data: sync() });
+    await answer(r.c, 'sync', { data: { messages: [sm(AB, 1, 'bob', { text: 'bob 说' })], hasMore: false } });
+    await openMenu('bob 说');
+    expect(menuTexts()).toEqual(['复制', '引用']);
   });
 
   it('features.moderation 关闭、老服务端没有这个字段：都没有"举报"（第 76 条）', async () => {
@@ -414,6 +410,11 @@ describe('撤回提示行"举报"（AC-MOD-03-11，F-MOD-03 规则 2a）', () =>
     ]);
     expect(screen.getAllByTestId('msg-recalled')).toHaveLength(3);
     expect(screen.queryByTestId('recall-report')).toBeNull();
+  });
+
+  it('不知道是谁撤回的（recalledBy 为空，老服务端）：按别人撤回，有"举报"（第 89 条）', async () => {
+    await openChat(G, [recalled(G, 1, 'bob')]);
+    expect(screen.getByTestId('recall-report')).toBeInTheDocument();
   });
 
   it('features.moderation 关闭：别人撤回的也没有', async () => {

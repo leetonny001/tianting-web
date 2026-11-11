@@ -1600,9 +1600,16 @@ a {
   text-align: right;
 }
 .tt-tip-action {
+  /* 点击区域不小于最小触控尺寸（PRD-ui，frontend-chat 第 93 条）；文字大小不变，提示行跟着变高 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tt-size-touch-min);
+  min-height: var(--tt-size-touch-min);
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
+  vertical-align: middle;
   cursor: pointer;
 }
