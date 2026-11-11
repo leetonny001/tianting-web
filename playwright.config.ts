@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { CALLERS_JSON, QUARANTINE_KEY } from './e2e/caller';
+import { callersJson, QUARANTINE_KEY, REPORT_KEY } from './e2e/caller';
 import { ADMIN, NODEMO, PORTS, PROD, S3, SERVER, WEB } from './e2e/ports';
 
 // 端到端测试连真实的 im-server（测试模式 + 演示登录）：服务端源码默认在同级目录 ../tianting-server/server（或旧名 ../im-mvp/server），
@@ -16,7 +16,10 @@ const tmp = mkdtempSync(join(process.env.TT_E2E_TMP ?? tmpdir(), 'tt-web-e2e-'))
 const nodemoDist = join(tmp, 'dist-nodemo');
 const db = join(tmp, 'im.db');
 const callers = join(tmp, 'callers.json');
-writeFileSync(callers, CALLERS_JSON, { mode: 0o600 }); // 服务端要求 0600
+// 词库管理接口的 scope moderation.words（C6，BE-492 起才有）：服务端源码认识才加，老服务端遇到不认识的 scope 拒绝启动。
+const scopeSrc = join(serverDir, 'internal/adminauth/scope.go');
+const modScope = existsSync(scopeSrc) && readFileSync(scopeSrc, 'utf8').includes('"moderation.words"');
+writeFileSync(callers, callersJson(modScope ? ['moderation.words'] : []), { mode: 0o600 }); // 服务端要求 0600
 export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,
@@ -72,6 +75,9 @@ export default defineConfig({
         IM_MSG_ACTIONS_ENABLED: '1',
         // 会话置顶、免打扰、删除（C5）。关闭时的菜单用改写 /v1/config 验证（TC-CVS-01-06 第 3 条）。
         IM_CONV_SETTINGS_ENABLED: '1',
+        // 敏感词和举报（C6）。关闭时的入口用改写 /v1/config 验证（TC-MOD-03-09 第 4 条）；证据密钥只是测试值。
+        IM_MOD_ENABLED: '1',
+        IM_REPORT_KEY: REPORT_KEY,
       },
     },
     {

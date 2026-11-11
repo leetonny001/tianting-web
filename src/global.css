@@ -1553,3 +1553,56 @@ a {
   color: var(--tt-color-text-secondary);
   text-align: center;
 }
+
+/* 举报（C6，PRD-chat F-MOD-03 规则 8，FE-693）：举报单是底部弹层；撤回提示行后面的"举报" */
+.tt-report-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tt-space-2);
+}
+.tt-report-reasons {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--tt-space-3);
+  padding: 0;
+  border: 0;
+}
+.tt-report-legend {
+  display: block;
+  margin-bottom: var(--tt-space-1);
+  padding: 0;
+  color: var(--tt-color-text-secondary);
+  font-size: var(--tt-font-small);
+}
+.tt-report-reason {
+  display: flex;
+  align-items: center;
+  gap: var(--tt-space-3);
+  min-height: var(--tt-size-touch-min);
+  cursor: pointer;
+}
+.tt-report-reason input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--tt-color-brand);
+}
+.tt-report-note {
+  display: block;
+  margin-top: var(--tt-space-1);
+}
+.tt-report-hint {
+  margin: var(--tt-space-2) 0 0;
+  font-size: var(--tt-font-caption);
+}
+.tt-dialog-body .tt-counter {
+  display: block;
+  text-align: right;
+}
+.tt-tip-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}

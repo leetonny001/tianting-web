@@ -11,6 +11,7 @@ import { messageFor } from '../lib/errors';
 import { groupIdOf, invitePath, MAX_GROUP_NAME, membersPath, noticePath } from '../lib/group';
 import { chatPath } from '../lib/routes';
 import { errCode, textLen, userPath, type UserRouteState } from '../lib/social';
+import { ReportSheet, useReportOn } from './ReportSheet';
 
 const GRID_SIZE = 20;
 
@@ -24,7 +25,8 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
   const { info, gone, refresh } = useGroupInfo(groupId);
   const { members } = useGroupMembers(groupId);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<'leave' | 'dissolve' | null>(null);
+  const [confirm, setConfirm] = useState<'leave' | 'dissolve' | 'report' | null>(null);
+  const reportOn = useReportOn();
   const inFlight = useRef(false);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
   const nameTooLong = renaming !== null && textLen(renaming) > MAX_GROUP_NAME;
   const nameEmpty = renaming !== null && textLen(renaming) === 0;
 
-  async function act(cmd: string, op: () => Promise<unknown>, done: () => void) {
+  async function act(cmd: string, op: () => Promise<unknown>, done: () => void, failed?: (code: number) => void) {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
@@ -58,6 +60,7 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
       const code = errCode(e);
       toast(messageFor(code, cmd));
       if (code === 4030) await refresh();
+      failed?.(code);
     } finally {
       inFlight.current = false;
     }
@@ -140,6 +143,15 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
           </div>
         )}
 
+        {reportOn && (
+          // 举报群（F-MOD-03 规则 8）：群设置只对当前成员显示，不在群里的只读页没有（frontend-chat 第 77 条）。
+          <div className="tt-section">
+            <button className="tt-row" onClick={() => setConfirm('report')} data-testid="group-report">
+              举报
+            </button>
+          </div>
+        )}
+
         <div className="tt-section">
           <button className="tt-row tt-danger-text" onClick={() => setConfirm('leave')} data-testid="group-leave">
             退出群聊
@@ -178,6 +190,8 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
                     'groupUpdate',
                     () => c.updateGroup(groupId, { name }),
                     () => void refresh(),
+                    // 群名被拦截（4510，frontend-chat 第 82 条）：提示"内容包含不当信息，请修改后重试"，重新打开、内容保留可以改。
+                    (code) => code === 4510 && setRenaming(name),
                   );
                 }}
                 data-testid="rename-save"
@@ -200,6 +214,9 @@ export function GroupSettings({ convId, onGone }: { convId: string; onGone: () =
             </p>
           )}
         </Dialog>
+      )}
+      {confirm === 'report' && (
+        <ReportSheet target={{ targetType: 'group', groupId }} onClose={() => setConfirm(null)} />
       )}
       {confirm === 'leave' && (
         <Confirm

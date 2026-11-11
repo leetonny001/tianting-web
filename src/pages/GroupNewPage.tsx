@@ -8,7 +8,7 @@ import { TopBar } from '../components/TopBar';
 import { useClient, useSelf } from '../im/ImProvider';
 import { groupCreateErrorText, MAX_GROUP_NAME, MIN_GROUP_PICK } from '../lib/group';
 import { chatPath } from '../lib/routes';
-import { textLen, useGoBack } from '../lib/social';
+import { errCode, textLen, useGoBack } from '../lib/social';
 
 /** 发起群聊（PRD-ui F-UI-35）。 */
 export function GroupNewPage() {
@@ -34,7 +34,8 @@ export function GroupNewPage() {
       const { conv } = await c.createGroup({ members: selected, ...(trimmed ? { name: trimmed } : {}) });
       navigate(chatPath(conv.convId), { replace: true });
     } catch (e) {
-      setNaming(false);
+      // 群名被拦截（4510，frontend-chat 第 82 条）：命名框留着，群名保留可以改；其他错误照旧关掉。
+      if (errCode(e) !== 4510) setNaming(false);
       toast(groupCreateErrorText(e, c, self));
       if (e instanceof IMError && e.userId) setErrors(new Set([e.userId]));
     } finally {

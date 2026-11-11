@@ -30,6 +30,9 @@ export function accountErrorText(err: unknown): string {
       return `尝试次数过多，请 ${minutes(err.details?.retryAfterSeconds)} 分钟后再试`;
     case 5030:
       return '服务暂不可用';
+    case 4510:
+      // 昵称、用户名被拦截（C6，P-48 ⑥）：不是消息，用"内容包含不当信息，请修改后重试"；表单内容保留（frontend-chat 第 82 条）。
+      return messageFor(4510, 'account');
     default:
       return err.code >= 5000 ? messageFor(5000) : messageFor(err.code);
   }

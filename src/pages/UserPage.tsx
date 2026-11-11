@@ -10,10 +10,9 @@ import { useClient, useSelf } from '../im/ImProvider';
 import { useBlocks, useFriendRequests, useFriends, useProfile, useRelation, useSocialSettings } from '../im/hooks';
 import { messageFor } from '../lib/errors';
 import { chatPath } from '../lib/routes';
-import { applyPath, errCode, useGoBack, userPath, type UserRouteState } from '../lib/social';
+import { applyPath, BLOCK_TEXT, errCode, useGoBack, userPath, type UserRouteState } from '../lib/social';
 import { decodeParam } from './ChatPage';
-
-const BLOCK_TEXT = '加入黑名单后，你将不再收到对方的私聊消息和好友申请；在共同的群聊里仍能看到对方的发言';
+import { ReportSheet, useReportOn } from './ReportSheet';
 
 /**
  * 资料卡（PRD-ui F-UI-14）。资料来源：好友 / 申请 / 黑名单项的 profile → users 缓存 → 路由状态 → 只显示 userId。
@@ -42,7 +41,8 @@ export function UserPage() {
   const official = profile?.official ?? false;
   const isFriend = !!friend;
   const [menu, setMenu] = useState(false);
-  const [confirm, setConfirm] = useState<'block' | 'delete' | null>(null);
+  const [confirm, setConfirm] = useState<'block' | 'delete' | 'report' | null>(null);
+  const reportOn = useReportOn();
   const [busy, setBusy] = useState(false);
 
   const open = mode === 'open';
@@ -106,6 +106,18 @@ export function UserPage() {
             {isFriend && (
               <button role="menuitem" onClick={() => setConfirm('delete')}>
                 删除朋友
+              </button>
+            )}
+            {reportOn && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenu(false);
+                  setConfirm('report');
+                }}
+                data-testid="user-report"
+              >
+                举报
               </button>
             )}
           </div>
@@ -177,6 +189,14 @@ export function UserPage() {
             setMenu(false);
             void run('block', () => c.block(userId));
           }}
+        />
+      )}
+      {confirm === 'report' && (
+        // 举报用户成功后询问拉黑；已在黑名单的不问（frontend-chat 第 79 条）。
+        <ReportSheet
+          target={{ targetType: 'user', userId }}
+          askBlock={relation === 'blocked' ? undefined : userId}
+          onClose={() => setConfirm(null)}
         />
       )}
       {confirm === 'delete' && (

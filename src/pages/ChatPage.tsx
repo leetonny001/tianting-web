@@ -53,22 +53,25 @@ import {
   SOURCE_MISSING,
 } from '../lib/errors';
 import { noticePath } from '../lib/group';
+import { canReport } from '../lib/report';
 import { chatPath } from '../lib/routes';
 import { applyPath, userPath, type UserRouteState } from '../lib/social';
 import { formatTime, needsDivider } from '../lib/time';
 import { AttachButton, AttachmentError, FileBubble, ImageBubble, ImageViewer, useSendAttachments } from './Attach';
 import { Composer, type ComposerHandle } from './Composer';
+import { ReportSheet, useReportOn } from './ReportSheet';
 
 const BOTTOM_SLACK = 100; // 距底部不超过 100px 算"在底部"（F-MSG-06 规则 5）
 const QUOTE_JUMP_MAX = 200; // 引用跳转：距已加载范围 200 条以内才翻页（F-QUO-02 规则 5，问题 20 按 seq 差算）
 const HIGHLIGHT_MS = 2000;
 
-/** 消息菜单项（PRD-ui F-UI-09 规则 3，PRD-chat 第 13.3 节）。举报随 C6。 */
-type MenuItem = 'copy' | 'quote' | 'recall' | 'retry' | 'delete';
+/** 消息菜单项（PRD-ui F-UI-09 规则 3，PRD-chat 第 13.3 节）。举报随 C6（FE-693）。 */
+type MenuItem = 'copy' | 'quote' | 'recall' | 'report' | 'retry' | 'delete';
 const MENU_TEXT: Record<MenuItem, string> = {
   copy: '复制',
   quote: '引用',
   recall: '撤回',
+  report: '举报',
   retry: '重发',
   delete: '删除',
 };
@@ -141,6 +144,9 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
   // 撤回、引用、@（C4）：GET /v1/config 的 features.msgActions（IM_MSG_ACTIONS_ENABLED）打开才有（PRD-ui F-UI-09 规则 4）。
   // AccountConfig.features.msgActions（可选，老服务端没有，按关闭处理；问题 36）。
   const actionsOn = !!knownConfig?.features?.msgActions;
+  // 举报（C6）：features.moderation 关闭时消息菜单、撤回提示行都没有"举报"（frontend-chat 第 76 条）。
+  const reportOn = useReportOn();
+  const [reporting, setReporting] = useState<{ msgId: string; from: string } | null>(null);
   const composer = useRef<ComposerHandle>(null);
   const [viewer, setViewer] = useState<{ fileId: string; id: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
@@ -336,14 +342,19 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
     toast(viewing.recalled ? MESSAGE_RECALLED : MESSAGE_DELETED);
   }, [viewer, viewing, toast]);
 
-  /** 菜单项（F-UI-09 规则 3～5）：C4 开关关时只有"复制"和失败消息的两项；开时按 SDK 的 messageActions。 */
+  /**
+   * 菜单项（F-UI-09 规则 3～5）：C4 开关关时只有"复制"和失败消息的两项；开时按 SDK 的 messageActions。
+   * "举报"排在"撤回"后面（第 13.3 节），features.moderation 打开、canReport 为真才有（frontend-chat 第 76、77 条）。
+   * 失败的消息按 SDK 的 canRetry：4510 被拦截的、原文件不在的没有"重发"，只有"复制""删除"（第 81 条）。
+   */
   const menuItems = (m: Message): MenuItem[] => {
     const out: MenuItem[] = actionsOn
       ? c.messageActions(m, conv?.myRole)
       : !m.deleted && m.type === 'text'
         ? ['copy']
         : [];
-    if (m.status === 'failed' && m.error !== 'sourceMissing') out.push('retry');
+    if (reportOn && canReport(m, self)) out.push('report');
+    if (c.canRetry(m)) out.push('retry');
     if (m.status === 'failed') out.push('delete');
     return out;
   };
@@ -359,6 +370,8 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
       removeFailed(m); // 只从本地移除，不影响服务端（F-UI-09 规则 3）
     } else if (item === 'quote') {
       composer.current?.quote(m.msgId!);
+    } else if (item === 'report' && m.msgId) {
+      setReporting({ msgId: m.msgId, from: m.from });
     } else if (item === 'recall' && m.msgId) {
       try {
         await c.recall(convId, m.msgId);
@@ -468,7 +481,18 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
             </div>
           ) : r.m.deleted ? (
             r.m.recalled ? (
-              <RecallRow key={r.m.clientMsgId} m={r.m} convId={convId} highlight={highlight === r.m.seq} />
+              <RecallRow
+                key={r.m.clientMsgId}
+                m={r.m}
+                convId={convId}
+                highlight={highlight === r.m.seq}
+                // 别人撤回的、本机看过的（seq ≤ 已读位置，和服务端 readSeq ≥ seq 的校验一致，F-MOD-03 规则 2a）才有"举报"。
+                onReport={
+                  reportOn && canReport(r.m, self) && (r.m.seq ?? Infinity) <= (conv?.readSeq ?? 0)
+                    ? () => setReporting({ msgId: r.m.msgId!, from: r.m.from })
+                    : undefined
+                }
+              />
             ) : (
               <div
                 className={`tt-tip${highlight !== null && highlight === r.m.seq ? ' tt-highlight' : ''}`}
@@ -593,13 +617,13 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
           }}
         />
       )}
-      {retry && retry.error === 'sourceMissing' ? (
-        // 原文件已经不在（F-FILE-07 规则 4）：不能重发，只能删除。
+      {retry && retry.status === 'failed' && !c.canRetry(retry) ? (
+        // 不能重发（SDK canRetry）：原文件已经不在（F-FILE-07 规则 4），或内容被拦截（4510，frontend-chat 第 81 条），只能删除。
         <Confirm
-          text={SOURCE_MISSING}
+          text={retry.error === 'sourceMissing' ? SOURCE_MISSING : messageFor(Number(retry.error), 'send')}
           ok="删除"
           danger
-          testId="source-missing-dialog"
+          testId={retry.error === 'sourceMissing' ? 'source-missing-dialog' : 'no-retry-dialog'}
           onCancel={() => setRetryId(null)}
           onOk={() => {
             removeFailed(retry);
@@ -622,6 +646,14 @@ function Chat({ convId, type, to }: { convId: string; type: 'c2c' | 'group'; to:
       )}
       {fileDialog}
       {viewer && <ImageViewer fileId={viewer.fileId} onClose={() => setViewer(null)} />}
+      {reporting && (
+        // 单聊的消息举报成功后询问拉黑，群消息不问（frontend-chat 第 79 条）。
+        <ReportSheet
+          target={{ targetType: 'message', convId, msgId: reporting.msgId }}
+          askBlock={type === 'c2c' ? reporting.from : undefined}
+          onClose={() => setReporting(null)}
+        />
+      )}
       {menu && (
         <BubbleMenu
           top={menu.top}
@@ -742,18 +774,41 @@ function BubbleMenu({
   );
 }
 
-/** 撤回提示行（F-RCL-02 规则 1a 的表，F-RCL-03 规则 6）：居中小字，没有菜单；显示名到了再替换。 */
-function RecallRow({ m, convId, highlight }: { m: Message; convId: string; highlight: boolean }) {
+/**
+ * 撤回提示行（F-RCL-02 规则 1a 的表，F-RCL-03 规则 6）：居中小字，没有菜单；显示名到了再替换。
+ * onReport 有值时后面跟一个"举报"（F-MOD-03 规则 2a，AC-MOD-03-11）。
+ */
+function RecallRow({
+  m,
+  convId,
+  highlight,
+  onReport,
+}: {
+  m: Message;
+  convId: string;
+  highlight: boolean;
+  onReport?: () => void;
+}) {
   const c = useClient();
   useProfiles([m.from, m.recalledBy ?? ''].filter(Boolean));
   return (
     <div
       className={`tt-tip${highlight ? ' tt-highlight' : ''}`}
-      data-testid="msg-recalled"
+      data-testid={onReport ? 'recall-row' : 'msg-recalled'}
       data-seq={m.seq}
       onContextMenu={noBrowserMenu}
     >
-      {c.recallText(convId, m)}
+      {onReport ? (
+        // 有"举报"时提示文字单独一层（msg-recalled 仍然只有撤回文案），按钮跟在后面。
+        <>
+          <span data-testid="msg-recalled">{c.recallText(convId, m)}</span>{' '}
+          <button type="button" className="tt-link tt-tip-action" onClick={onReport} data-testid="recall-report">
+            举报
+          </button>
+        </>
+      ) : (
+        c.recallText(convId, m)
+      )}
     </div>
   );
 }
@@ -871,7 +926,10 @@ function Bubble({
               {m.status === 'failed' ? (
                 <button
                   className="tt-failed-btn"
-                  aria-label="发送失败，点击重发"
+                  aria-label={
+                    // 4510 被拦截的不能重发（frontend-chat 第 81 条）：读出原因，点了只能删除。
+                    m.error === 4510 ? `发送失败：${messageFor(4510, 'send')}` : '发送失败，点击重发'
+                  }
                   onClick={onRetry}
                   data-testid="failed-icon"
                 >
@@ -896,7 +954,9 @@ function Bubble({
               }
             }}
             onPointerDown={(e) => {
-              if (!hasMenu || isWide()) return; // 宽屏用右键（F-UI-09 规则 1），按住鼠标是选择文字
+              // 宽屏用右键（F-UI-09 规则 1），按住鼠标是选择文字。只有主键算长按：窄屏窗口用鼠标右键时，按下启动的计时
+              // 会在 contextmenu 打开菜单、用户点了菜单项之后再打开一次（FE-693 实测，会话列表 FE-683 已经这样判断）。
+              if (!hasMenu || isWide() || e.button !== 0) return;
               const el = e.currentTarget;
               press.current = { x: e.clientX, y: e.clientY, t: setTimeout(() => open(el), LONG_PRESS_MS) };
             }}

@@ -9,6 +9,9 @@ export const MAX_REMARK = 32;
 /** 去首尾空白后的码点数（PRD-core 3.1 节）。 */
 export const textLen = (s: string) => [...s.trim()].length;
 
+/** 拉黑确认框的说明（F-UI-14）；举报成功后询问拉黑也用它（frontend-chat 第 79 条）。 */
+export const BLOCK_TEXT = '加入黑名单后，你将不再收到对方的私聊消息和好友申请；在共同的群聊里仍能看到对方的发言';
+
 /** 失败的命令的错误码；超时、断线按服务异常提示。 */
 export const errCode = (e: unknown) => (e instanceof IMError ? e.code : 5000);
 

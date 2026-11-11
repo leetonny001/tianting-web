@@ -237,9 +237,9 @@ test('TC-RCL-02-04 TC-RCL-02-05 管理员撤回成员：三方的聊天页和列
     [pn, `${a}撤回了一条成员消息`],
   ];
   for (const [p, text] of want) await expect(p.getByTestId('msg-recalled')).toHaveText(text);
-  // 管理员撤回其他管理员：菜单里有"撤回"（客户端不知道对方角色），服务端 4030
+  // 管理员撤回其他管理员：菜单里有"撤回"（客户端不知道对方角色），服务端 4030。别人的消息还有"举报"（C6，IM_MOD_ENABLED=1）
   const mm = await menu(pa, '管理员二的话');
-  await expect(mm.getByRole('menuitem')).toHaveText(['复制', '引用', '撤回']);
+  await expect(mm.getByRole('menuitem')).toHaveText(['复制', '引用', '撤回', '举报']);
   await pa.getByTestId('menu-recall').click();
   await expect(pa.getByTestId('toast')).toHaveText('你没有权限撤回这条消息');
   await expect(bubble(pa, '管理员二的话')).toBeVisible();
@@ -372,7 +372,7 @@ test('TC-QUO-01-05 选"引用"：引用条可以取消（不发 quote）；发�
     .click({
       button: 'right',
     });
-  await expect(a.getByTestId('bubble-menu').getByRole('menuitem')).toHaveText(['引用']);
+  await expect(a.getByTestId('bubble-menu').getByRole('menuitem')).toHaveText(['引用', '举报']); // 别人的图片：C6 起有"举报"
   await a.getByTestId('menu-quote').click();
   await expect(a.getByTestId('quote-bar-text')).toHaveText('小二: [图片]');
   await input(a).fill('图不错');

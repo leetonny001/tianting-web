@@ -16,6 +16,7 @@ import {
   FileSpreadsheet,
   FileText,
   FileVideo,
+  Flag,
   Image,
   ImageOff,
   LoaderCircle,
@@ -60,6 +61,8 @@ const icons = {
   zoomOut: ZoomOut,
   // 会话列表的免打扰（C5，PRD-chat F-CVS-02 规则 5；PRD-ui 6.6 节清单随 BE-488）
   notifyOff: BellOff,
+  // 举报（C6，PRD-chat F-MOD-03 规则 8、第 13.3 节；frontend-chat 第 80 条：Lucide flag，PRD-ui 6.6 节清单随 BE-497 第 4 条）
+  report: Flag,
 } as const;
 
 export type IconName = keyof typeof icons;
